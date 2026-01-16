@@ -89,6 +89,29 @@ struct PackageScanner {
             print("Loading package description: \(packageDirectory.path)")
         }
 
+        // Create tasks to read output asynchronously
+        let outputTask = Task {
+            var data = Data()
+            for try await chunk in outputPipe.fileHandleForReading.bytes {
+                data.append(chunk)
+                if verbose {
+                    print(String(bytes: [chunk], encoding: .utf8) ?? "", terminator: "")
+                }
+            }
+            return data
+        }
+
+        let errorTask = Task {
+            var data = Data()
+            for try await chunk in errorPipe.fileHandleForReading.bytes {
+                data.append(chunk)
+                if verbose {
+                    print(String(bytes: [chunk], encoding: .utf8) ?? "", terminator: "")
+                }
+            }
+            return data
+        }
+
         try process.run()
 
         // Wait for process with timeout
@@ -103,11 +126,17 @@ struct PackageScanner {
                 // Force kill if still running
                 kill(process.processIdentifier, SIGKILL)
             }
+            
+            // Cancel reading tasks
+            outputTask.cancel()
+            errorTask.cancel()
+            
             throw ScannerError.timeout(packageDirectory.path, timeoutSeconds)
         }
 
-        let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
-        let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+        // Wait for all output to be read
+        let outputData = try await outputTask.value
+        let errorData = try await errorTask.value
 
         if process.terminationStatus != 0 {
             let errorMessage = String(data: errorData, encoding: .utf8) ?? "Unknown error"
