@@ -784,6 +784,81 @@ struct PackageDescriptionTests {
 
         #expect(package.dependencies?[0].requirement?.branch == ["main"])
     }
+
+    @Test("hasLibraryProduct returns true when package has library product")
+    func hasLibraryProductTrue() throws {
+        let json = """
+        {
+            "name": "TestPackage",
+            "path": "/path",
+            "products": [
+                {"name": "MyLibrary", "targets": ["MyTarget"], "type": {"library": ["automatic"]}}
+            ],
+            "targets": []
+        }
+        """
+
+        let data = json.data(using: .utf8)!
+        let package = try JSONDecoder().decode(PackageDescription.self, from: data)
+
+        #expect(package.hasLibraryProduct == true)
+    }
+
+    @Test("hasLibraryProduct returns false when package has only executable products")
+    func hasLibraryProductFalseForExecutable() throws {
+        let json = """
+        {
+            "name": "TestPackage",
+            "path": "/path",
+            "products": [
+                {"name": "MyTool", "targets": ["MyTarget"], "type": {"executable": null}}
+            ],
+            "targets": []
+        }
+        """
+
+        let data = json.data(using: .utf8)!
+        let package = try JSONDecoder().decode(PackageDescription.self, from: data)
+
+        #expect(package.hasLibraryProduct == false)
+    }
+
+    @Test("hasLibraryProduct returns false when package has no products")
+    func hasLibraryProductFalseForEmpty() throws {
+        let json = """
+        {
+            "name": "TestPackage",
+            "path": "/path",
+            "products": [],
+            "targets": []
+        }
+        """
+
+        let data = json.data(using: .utf8)!
+        let package = try JSONDecoder().decode(PackageDescription.self, from: data)
+
+        #expect(package.hasLibraryProduct == false)
+    }
+
+    @Test("hasLibraryProduct returns true when package has mixed products including library")
+    func hasLibraryProductTrueForMixed() throws {
+        let json = """
+        {
+            "name": "TestPackage",
+            "path": "/path",
+            "products": [
+                {"name": "MyTool", "targets": ["ToolTarget"], "type": {"executable": null}},
+                {"name": "MyLibrary", "targets": ["LibTarget"], "type": {"library": ["automatic"]}}
+            ],
+            "targets": []
+        }
+        """
+
+        let data = json.data(using: .utf8)!
+        let package = try JSONDecoder().decode(PackageDescription.self, from: data)
+
+        #expect(package.hasLibraryProduct == true)
+    }
 }
 
 // MARK: - PackageConverter Tests
@@ -1236,6 +1311,115 @@ struct ProjectWriterTests {
 
         // Should NOT contain dependencies key when empty
         #expect(!output.contains("dependencies:"))
+    }
+}
+
+// MARK: - PackageScanner Tests
+
+@Suite("PackageScanner")
+struct PackageScannerTests {
+    @Test("finds package when root directory itself is a package")
+    func findsPackageAtRoot() throws {
+        // Create a temporary directory that IS a package (contains Package.swift)
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PackageScannerTest-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        // Create Package.swift at the root
+        let packageSwiftURL = tempDir.appendingPathComponent("Package.swift")
+        try "// swift-tools-version: 5.9".write(to: packageSwiftURL, atomically: true, encoding: .utf8)
+
+        let scanner = PackageScanner(rootDirectory: tempDir)
+        let packages = try scanner.findPackages()
+
+        #expect(packages.count == 1)
+        #expect(packages[0].lastPathComponent == "Package.swift")
+        #expect(packages[0].deletingLastPathComponent().standardizedFileURL == tempDir.standardizedFileURL)
+    }
+
+    @Test("finds packages in subdirectories")
+    func findsPackagesInSubdirectories() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PackageScannerTest-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        // Create two subdirectories with Package.swift files
+        let package1Dir = tempDir.appendingPathComponent("Package1")
+        let package2Dir = tempDir.appendingPathComponent("Package2")
+        try FileManager.default.createDirectory(at: package1Dir, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: package2Dir, withIntermediateDirectories: true)
+
+        try "// Package1".write(to: package1Dir.appendingPathComponent("Package.swift"), atomically: true, encoding: .utf8)
+        try "// Package2".write(to: package2Dir.appendingPathComponent("Package.swift"), atomically: true, encoding: .utf8)
+
+        let scanner = PackageScanner(rootDirectory: tempDir)
+        let packages = try scanner.findPackages()
+
+        #expect(packages.count == 2)
+        let packageNames = Set(packages.map { $0.deletingLastPathComponent().lastPathComponent })
+        #expect(packageNames.contains("Package1"))
+        #expect(packageNames.contains("Package2"))
+    }
+
+    @Test("finds both root package and subdirectory packages")
+    func findsBothRootAndSubdirectoryPackages() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PackageScannerTest-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        // Create Package.swift at root
+        try "// Root package".write(to: tempDir.appendingPathComponent("Package.swift"), atomically: true, encoding: .utf8)
+
+        // Create a subdirectory with Package.swift
+        let subDir = tempDir.appendingPathComponent("SubPackage")
+        try FileManager.default.createDirectory(at: subDir, withIntermediateDirectories: true)
+        try "// Sub package".write(to: subDir.appendingPathComponent("Package.swift"), atomically: true, encoding: .utf8)
+
+        let scanner = PackageScanner(rootDirectory: tempDir)
+        let packages = try scanner.findPackages()
+
+        #expect(packages.count == 2)
+    }
+
+    @Test("excludes .build directory")
+    func excludesBuildDirectory() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PackageScannerTest-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        // Create Package.swift at root
+        try "// Root".write(to: tempDir.appendingPathComponent("Package.swift"), atomically: true, encoding: .utf8)
+
+        // Create .build directory with a Package.swift (should be ignored)
+        let buildDir = tempDir.appendingPathComponent(".build").appendingPathComponent("checkouts").appendingPathComponent("SomePackage")
+        try FileManager.default.createDirectory(at: buildDir, withIntermediateDirectories: true)
+        try "// Should be ignored".write(to: buildDir.appendingPathComponent("Package.swift"), atomically: true, encoding: .utf8)
+
+        let scanner = PackageScanner(rootDirectory: tempDir)
+        let packages = try scanner.findPackages()
+
+        #expect(packages.count == 1)
+        #expect(packages[0].deletingLastPathComponent().standardizedFileURL == tempDir.standardizedFileURL)
+    }
+
+    @Test("returns empty array when no packages found")
+    func returnsEmptyWhenNoPackages() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PackageScannerTest-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        // Create some files but no Package.swift
+        try "// Not a package".write(to: tempDir.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+
+        let scanner = PackageScanner(rootDirectory: tempDir)
+        let packages = try scanner.findPackages()
+
+        #expect(packages.isEmpty)
     }
 }
 

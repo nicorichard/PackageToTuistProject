@@ -12,6 +12,11 @@ struct PackageDescription: Decodable {
     let dependencies: [Dependency]?
     let toolsVersion: String?
 
+    /// Returns true if the package has at least one library product
+    var hasLibraryProduct: Bool {
+        products.contains { $0.type.library != nil }
+    }
+
     enum CodingKeys: String, CodingKey {
         case name
         case manifestDisplayName = "manifest_display_name"

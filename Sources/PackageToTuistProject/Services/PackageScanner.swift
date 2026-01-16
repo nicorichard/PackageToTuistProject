@@ -30,6 +30,15 @@ struct PackageScanner {
         var packages: [URL] = []
         let fileManager = FileManager.default
 
+        // Check if the root directory itself is a package
+        let rootPackageSwift = rootDirectory.appendingPathComponent("Package.swift")
+        if fileManager.fileExists(atPath: rootPackageSwift.path) {
+            packages.append(rootPackageSwift)
+            if verbose {
+                print("Found package: \(rootPackageSwift.path)")
+            }
+        }
+
         guard let enumerator = fileManager.enumerator(
             at: rootDirectory,
             includingPropertiesForKeys: [.isDirectoryKey],

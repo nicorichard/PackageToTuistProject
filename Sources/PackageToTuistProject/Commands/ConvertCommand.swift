@@ -142,6 +142,11 @@ struct ConvertCommand {
         let packageDirName = packagePath.deletingLastPathComponent().lastPathComponent
         do {
             let description = try await scanner.loadPackageDescription(at: packagePath)
+            // Skip packages without library products
+            guard description.hasLibraryProduct else {
+                await progress.incrementFailed(path: packageDirName, error: "No library product found, skipping")
+                return (packagePath, nil)
+            }
             await progress.increment(packageName: description.name)
             return (packagePath, description)
         } catch {
