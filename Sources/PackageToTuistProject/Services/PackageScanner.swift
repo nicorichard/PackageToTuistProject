@@ -5,6 +5,9 @@ struct PackageScanner {
     let rootDirectory: URL
     let verbose: Bool
 
+    /// Timeout for each package describe operation (in seconds)
+    private let timeoutSeconds: UInt64 = 60
+
     /// Directories to exclude from scanning
     private let excludedDirectories: Set<String> = [
         ".build",
@@ -59,7 +62,7 @@ struct PackageScanner {
         return packages
     }
 
-    /// Load package description using `swift package describe --type json`
+    /// Load package description using `swift package describe --type json` with timeout
     func loadPackageDescription(at packagePath: URL) async throws -> PackageDescription {
         let packageDirectory = packagePath.deletingLastPathComponent()
 
@@ -78,7 +81,21 @@ struct PackageScanner {
         }
 
         try process.run()
-        process.waitUntilExit()
+
+        // Wait for process with timeout
+        let completed = await waitForProcessWithTimeout(process: process, timeoutSeconds: timeoutSeconds)
+
+        if !completed {
+            // Process timed out - kill it
+            process.terminate()
+            // Give it a moment to terminate gracefully
+            try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+            if process.isRunning {
+                // Force kill if still running
+                kill(process.processIdentifier, SIGKILL)
+            }
+            throw ScannerError.timeout(packageDirectory.path, timeoutSeconds)
+        }
 
         let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
         let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
@@ -96,10 +113,37 @@ struct PackageScanner {
         }
     }
 
+    /// Wait for a process to complete with a timeout
+    private func waitForProcessWithTimeout(process: Process, timeoutSeconds: UInt64) async -> Bool {
+        let timeoutNanoseconds = timeoutSeconds * 1_000_000_000
+
+        return await withTaskGroup(of: Bool.self) { group in
+            // Task 1: Wait for process to complete
+            group.addTask {
+                process.waitUntilExit()
+                return true
+            }
+
+            // Task 2: Timeout
+            group.addTask {
+                try? await Task.sleep(nanoseconds: timeoutNanoseconds)
+                return false
+            }
+
+            // Return the first result (either completion or timeout)
+            if let result = await group.next() {
+                group.cancelAll()
+                return result
+            }
+            return false
+        }
+    }
+
     enum ScannerError: LocalizedError {
         case cannotEnumerateDirectory(String)
         case packageDescribeFailed(String, String)
         case jsonDecodingFailed(String, String)
+        case timeout(String, UInt64)
 
         var errorDescription: String? {
             switch self {
@@ -109,6 +153,8 @@ struct PackageScanner {
                 return "Failed to describe package at \(path): \(message)"
             case .jsonDecodingFailed(let path, let message):
                 return "Failed to decode package JSON at \(path): \(message)"
+            case .timeout(let path, let seconds):
+                return "Timed out after \(seconds)s loading package at \(path)"
             }
         }
     }
