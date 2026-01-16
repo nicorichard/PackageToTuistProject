@@ -1,5 +1,31 @@
 import Foundation
 
+/// Actor to track loading progress in a thread-safe way
+actor LoadingProgress {
+    private(set) var completed = 0
+    let total: Int
+
+    init(total: Int) {
+        self.total = total
+    }
+
+    func increment(packageName: String) {
+        completed += 1
+        print("  [\(completed)/\(total)] Loaded \(packageName)")
+    }
+
+    func incrementFailed(path: String, error: String) {
+        completed += 1
+        print("  [\(completed)/\(total)] FAILED: \(path)")
+        print("    Warning: \(error)")
+    }
+
+    /// Get current progress (for testing)
+    func getCompleted() -> Int {
+        return completed
+    }
+}
+
 /// Main command that orchestrates the conversion process
 struct ConvertCommand {
     let rootDirectory: String
@@ -9,12 +35,15 @@ struct ConvertCommand {
     let dryRun: Bool
     let verbose: Bool
 
+    /// Maximum number of concurrent package loads
+    private let maxConcurrentLoads = 8
+
     func execute() async throws {
         let rootURL = URL(fileURLWithPath: rootDirectory).standardizedFileURL
 
-        print("Scanning for packages in: \(rootURL.path)")
+        // Step 1: Discover packages
+        print("[Step 1/3] Discovering packages in: \(rootURL.path)")
 
-        // Phase 1: Discovery
         let scanner = PackageScanner(rootDirectory: rootURL, verbose: verbose)
         let packagePaths = try scanner.findPackages()
 
@@ -25,39 +54,116 @@ struct ConvertCommand {
 
         print("Found \(packagePaths.count) package(s)")
 
-        // Load all package descriptions
-        var descriptions: [URL: PackageDescription] = [:]
-        for packagePath in packagePaths {
-            do {
-                let description = try await scanner.loadPackageDescription(at: packagePath)
-                descriptions[packagePath] = description
-                if verbose {
-                    print("  Loaded: \(description.name)")
-                }
-            } catch {
-                print("Warning: Could not load \(packagePath.path): \(error.localizedDescription)")
-            }
+        // Step 2: Load all package descriptions in parallel
+        print("\n[Step 2/3] Loading package descriptions (up to \(maxConcurrentLoads) in parallel)...")
+        let descriptions = await loadPackageDescriptions(
+            packagePaths: packagePaths,
+            scanner: scanner
+        )
+        print("  Loaded \(descriptions.count) of \(packagePaths.count) package(s)")
+
+        if descriptions.isEmpty {
+            print("No packages could be loaded.")
+            return
         }
 
-        // Phase 2: Build dependency collector
+        // Step 3: Process each package (build deps, convert, write)
+        print("\n[Step 3/3] Processing packages...")
+        try await processPackages(
+            descriptions: descriptions,
+            rootURL: rootURL
+        )
+
+        print("\nConversion complete!")
+        if !dryRun {
+            print("Generated \(descriptions.count) Project.swift file(s)")
+        }
+    }
+
+    /// Load package descriptions in parallel with limited concurrency
+    private func loadPackageDescriptions(
+        packagePaths: [URL],
+        scanner: PackageScanner
+    ) async -> [URL: PackageDescription] {
+        let progress = LoadingProgress(total: packagePaths.count)
+
+        return await withTaskGroup(
+            of: (URL, PackageDescription?).self,
+            returning: [URL: PackageDescription].self
+        ) { group in
+            var inFlight = 0
+            var pathIterator = packagePaths.makeIterator()
+            var descriptions: [URL: PackageDescription] = [:]
+
+            // Start initial batch
+            while inFlight < maxConcurrentLoads, let packagePath = pathIterator.next() {
+                group.addTask {
+                    await self.loadSinglePackage(
+                        packagePath: packagePath,
+                        scanner: scanner,
+                        progress: progress
+                    )
+                }
+                inFlight += 1
+            }
+
+            // As each completes, start the next
+            for await (path, description) in group {
+                if let desc = description {
+                    descriptions[path] = desc
+                }
+
+                // Start next task if there are more
+                if let packagePath = pathIterator.next() {
+                    group.addTask {
+                        await self.loadSinglePackage(
+                            packagePath: packagePath,
+                            scanner: scanner,
+                            progress: progress
+                        )
+                    }
+                }
+            }
+
+            return descriptions
+        }
+    }
+
+    /// Load a single package description
+    private func loadSinglePackage(
+        packagePath: URL,
+        scanner: PackageScanner,
+        progress: LoadingProgress
+    ) async -> (URL, PackageDescription?) {
+        let packageDirName = packagePath.deletingLastPathComponent().lastPathComponent
+        do {
+            let description = try await scanner.loadPackageDescription(at: packagePath)
+            await progress.increment(packageName: description.name)
+            return (packagePath, description)
+        } catch {
+            await progress.incrementFailed(path: packageDirName, error: error.localizedDescription)
+            return (packagePath, nil)
+        }
+    }
+
+    /// Process each package: build collector, convert, and write
+    private func processPackages(
+        descriptions: [URL: PackageDescription],
+        rootURL: URL
+    ) async throws {
+        // Build base dependency collector with all packages
         var collector = DependencyCollector()
 
-        // Register all local packages first
+        // Register all local packages
         for (packagePath, description) in descriptions {
             let packageDir = packagePath.deletingLastPathComponent()
             let relativePath = calculateRelativePath(from: rootURL, to: packageDir)
-
-            // Register local package with its products
             let productNames = description.products.map { $0.name }
             collector.registerLocalPackage(
                 identity: description.name,
                 relativePath: relativePath,
                 products: productNames
             )
-
-            if verbose {
-                print("Registered local package: \(description.name) at \(relativePath)")
-            }
         }
 
         // Collect external dependencies
@@ -76,22 +182,22 @@ struct ConvertCommand {
             }
         }
 
-        // Phase 3: Convert packages
+        // Create converter and writer
         let converter = PackageConverter(
             bundleIdPrefix: bundleIdPrefix,
             productType: productType,
             verbose: verbose
         )
-
-        var projects: [TuistProject] = []
+        let projectWriter = ProjectWriter()
         let allDescriptions = Dictionary(
             uniqueKeysWithValues: descriptions.map { ($0.key.path, $0.value) }
         )
 
-        for (packagePath, description) in descriptions {
-            if verbose {
-                print("Converting: \(description.name)")
-            }
+        // Process each package: convert and write
+        let sortedDescriptions = descriptions.sorted { $0.value.name < $1.value.name }
+        for (index, (packagePath, description)) in sortedDescriptions.enumerated() {
+            print("  [\(index + 1)/\(descriptions.count)] \(description.name)", terminator: "")
+            fflush(stdout)
 
             // Update relative paths for this package's dependencies
             var packageCollector = collector
@@ -101,22 +207,20 @@ struct ConvertCommand {
                 descriptions: descriptions
             )
 
+            // Convert
             let project = converter.convert(
                 package: description,
                 packagePath: packagePath,
                 collector: packageCollector,
                 allDescriptions: allDescriptions
             )
-            projects.append(project)
-        }
 
-        // Phase 4: Write output
-        let projectWriter = ProjectWriter()
-        for project in projects {
+            // Write
             try projectWriter.write(project: project, dryRun: dryRun, verbose: verbose)
+            print(" ✓")
         }
 
-        // Validate external dependencies against existing Tuist/Package.swift
+        // Validate external dependencies
         let externalDeps = collector.allExternalDependencies()
         if !externalDeps.isEmpty {
             let validator = TuistPackageValidator()
@@ -129,19 +233,12 @@ struct ConvertCommand {
             )
             validator.printWarnings(result: result)
         }
-
-        print("Conversion complete!")
-        if !dryRun {
-            print("Generated \(projects.count) Project.swift file(s)")
-        }
     }
 
     private func calculateRelativePath(from base: URL, to target: URL) -> String {
         let basePath = base.standardizedFileURL.path
         let targetPath = target.standardizedFileURL.path
 
-        // Simple relative path calculation
-        // Find common prefix and calculate relative path
         let baseComponents = basePath.split(separator: "/")
         let targetComponents = targetPath.split(separator: "/")
 
@@ -170,7 +267,6 @@ struct ConvertCommand {
     ) {
         let packageDir = packagePath.deletingLastPathComponent()
 
-        // For each local package, calculate the relative path from this package
         for (otherPath, otherDescription) in descriptions {
             let otherDir = otherPath.deletingLastPathComponent()
             let relativePath = calculateRelativePath(from: packageDir, to: otherDir)
@@ -199,7 +295,6 @@ struct ConvertCommand {
         } else if let revision = requirement.revision?.first {
             depRequirement = .revision(revision)
         } else {
-            // Default to a generic from requirement
             depRequirement = .range(from: "1.0.0", to: "2.0.0")
         }
 

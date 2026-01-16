@@ -2,6 +2,260 @@ import Testing
 import Foundation
 @testable import PackageToTuistProject
 
+// MARK: - LoadingProgress Tests
+
+@Suite("LoadingProgress")
+struct LoadingProgressTests {
+    @Test("initializes with correct total")
+    func initializesWithTotal() async {
+        let progress = LoadingProgress(total: 10)
+        let completed = await progress.getCompleted()
+        let total = await progress.total
+
+        #expect(completed == 0)
+        #expect(total == 10)
+    }
+
+    @Test("increment increases completed count")
+    func incrementIncreasesCount() async {
+        let progress = LoadingProgress(total: 5)
+
+        await progress.increment(packageName: "Package1")
+        var completed = await progress.getCompleted()
+        #expect(completed == 1)
+
+        await progress.increment(packageName: "Package2")
+        completed = await progress.getCompleted()
+        #expect(completed == 2)
+    }
+
+    @Test("incrementFailed increases completed count")
+    func incrementFailedIncreasesCount() async {
+        let progress = LoadingProgress(total: 5)
+
+        await progress.incrementFailed(path: "FailedPackage", error: "Some error")
+        let completed = await progress.getCompleted()
+        #expect(completed == 1)
+    }
+
+    @Test("handles concurrent increments correctly")
+    func handlesConcurrentIncrements() async {
+        let progress = LoadingProgress(total: 100)
+
+        // Run 100 concurrent increments
+        await withTaskGroup(of: Void.self) { group in
+            for i in 0..<100 {
+                group.addTask {
+                    await progress.increment(packageName: "Package\(i)")
+                }
+            }
+        }
+
+        let completed = await progress.getCompleted()
+        #expect(completed == 100)
+    }
+
+    @Test("mixed increment and incrementFailed works correctly")
+    func mixedIncrements() async {
+        let progress = LoadingProgress(total: 10)
+
+        await progress.increment(packageName: "Success1")
+        await progress.incrementFailed(path: "Failed1", error: "Error")
+        await progress.increment(packageName: "Success2")
+        await progress.incrementFailed(path: "Failed2", error: "Error")
+
+        let completed = await progress.getCompleted()
+        #expect(completed == 4)
+    }
+}
+
+// MARK: - ConvertCommand Tests
+
+@Suite("ConvertCommand")
+struct ConvertCommandTests {
+    @Test("initializes with correct properties")
+    func initializesCorrectly() {
+        let command = ConvertCommand(
+            rootDirectory: "/path/to/root",
+            bundleIdPrefix: "com.example",
+            productType: "staticFramework",
+            tuistDir: nil,
+            dryRun: true,
+            verbose: false
+        )
+
+        #expect(command.rootDirectory == "/path/to/root")
+        #expect(command.bundleIdPrefix == "com.example")
+        #expect(command.productType == "staticFramework")
+        #expect(command.tuistDir == nil)
+        #expect(command.dryRun == true)
+        #expect(command.verbose == false)
+    }
+
+    @Test("initializes with custom tuist directory")
+    func initializesWithTuistDir() {
+        let command = ConvertCommand(
+            rootDirectory: "/path/to/root",
+            bundleIdPrefix: "com.example",
+            productType: "framework",
+            tuistDir: "/custom/tuist",
+            dryRun: false,
+            verbose: true
+        )
+
+        #expect(command.tuistDir == "/custom/tuist")
+        #expect(command.verbose == true)
+    }
+}
+
+// MARK: - Parallel Loading Behavior Tests
+
+@Suite("ParallelLoadingBehavior")
+struct ParallelLoadingBehaviorTests {
+    @Test("TaskGroup processes all items")
+    func taskGroupProcessesAllItems() async {
+        // Simulate the parallel loading pattern used in ConvertCommand
+        let items = Array(0..<20)
+        let maxConcurrent = 8
+
+        actor ResultCollector {
+            var results: [Int] = []
+            func append(_ value: Int) { results.append(value) }
+            func getResults() -> [Int] { return results }
+        }
+
+        let collector = ResultCollector()
+
+        await withTaskGroup(of: Int.self) { group in
+            var inFlight = 0
+            var iterator = items.makeIterator()
+
+            // Start initial batch
+            while inFlight < maxConcurrent, let item = iterator.next() {
+                group.addTask {
+                    // Simulate async work
+                    try? await Task.sleep(nanoseconds: 1_000_000) // 1ms
+                    return item * 2
+                }
+                inFlight += 1
+            }
+
+            // Process results and add new tasks
+            for await result in group {
+                await collector.append(result)
+
+                if let item = iterator.next() {
+                    group.addTask {
+                        try? await Task.sleep(nanoseconds: 1_000_000)
+                        return item * 2
+                    }
+                }
+            }
+        }
+
+        let results = await collector.getResults()
+        #expect(results.count == 20)
+        // Check all expected results are present (order may vary due to concurrency)
+        let expectedResults = Set(items.map { $0 * 2 })
+        let actualResults = Set(results)
+        #expect(actualResults == expectedResults)
+    }
+
+    @Test("TaskGroup handles failures gracefully")
+    func taskGroupHandlesFailures() async {
+        let items = Array(0..<10)
+
+        actor Counter {
+            var successCount = 0
+            var failureCount = 0
+            func incrementSuccess() { successCount += 1 }
+            func incrementFailure() { failureCount += 1 }
+            func getCounts() -> (success: Int, failure: Int) {
+                return (successCount, failureCount)
+            }
+        }
+
+        let counter = Counter()
+
+        await withTaskGroup(of: Bool.self) { group in
+            for item in items {
+                group.addTask {
+                    // Simulate some failures (odd numbers fail)
+                    return item % 2 == 0
+                }
+            }
+
+            for await success in group {
+                if success {
+                    await counter.incrementSuccess()
+                } else {
+                    await counter.incrementFailure()
+                }
+            }
+        }
+
+        let counts = await counter.getCounts()
+        #expect(counts.success == 5) // 0, 2, 4, 6, 8
+        #expect(counts.failure == 5) // 1, 3, 5, 7, 9
+    }
+
+    @Test("concurrency limit is respected")
+    func concurrencyLimitRespected() async {
+        let maxConcurrent = 4
+        let totalTasks = 20
+
+        actor ConcurrencyTracker {
+            var currentConcurrency = 0
+            var maxObservedConcurrency = 0
+
+            func taskStarted() {
+                currentConcurrency += 1
+                if currentConcurrency > maxObservedConcurrency {
+                    maxObservedConcurrency = currentConcurrency
+                }
+            }
+
+            func taskEnded() {
+                currentConcurrency -= 1
+            }
+
+            func getMaxObserved() -> Int {
+                return maxObservedConcurrency
+            }
+        }
+
+        let tracker = ConcurrencyTracker()
+        let items = Array(0..<totalTasks)
+
+        await withTaskGroup(of: Void.self) { group in
+            var inFlight = 0
+            var iterator = items.makeIterator()
+
+            while inFlight < maxConcurrent, iterator.next() != nil {
+                group.addTask {
+                    await tracker.taskStarted()
+                    try? await Task.sleep(nanoseconds: 10_000_000) // 10ms
+                    await tracker.taskEnded()
+                }
+                inFlight += 1
+            }
+
+            for await _ in group {
+                if iterator.next() != nil {
+                    group.addTask {
+                        await tracker.taskStarted()
+                        try? await Task.sleep(nanoseconds: 10_000_000)
+                        await tracker.taskEnded()
+                    }
+                }
+            }
+        }
+
+        let maxObserved = await tracker.getMaxObserved()
+        #expect(maxObserved <= maxConcurrent)
+    }
+}
+
 // MARK: - TuistDependency Tests
 
 @Suite("TuistDependency")
