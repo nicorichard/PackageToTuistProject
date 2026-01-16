@@ -12,12 +12,14 @@ actor LoadingProgress {
     func increment(packageName: String) {
         completed += 1
         print("  [\(completed)/\(total)] Loaded \(packageName)")
+        fflush(stdout)
     }
 
     func incrementFailed(path: String, error: String) {
         completed += 1
         print("  [\(completed)/\(total)] FAILED: \(path)")
         print("    Warning: \(error)")
+        fflush(stdout)
     }
 
     /// Get current progress (for testing)
@@ -125,6 +127,8 @@ struct ConvertCommand {
                 }
             }
 
+            print("  All package loading tasks completed")
+            fflush(stdout)
             return descriptions
         }
     }

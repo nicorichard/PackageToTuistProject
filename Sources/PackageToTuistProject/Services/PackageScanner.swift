@@ -6,7 +6,7 @@ struct PackageScanner {
     let verbose: Bool
 
     /// Timeout for each package describe operation (in seconds)
-    private let timeoutSeconds: UInt64 = 60
+    private let timeoutSeconds: UInt64 = 30
 
     /// Directories to exclude from scanning
     private let excludedDirectories: Set<String> = [
@@ -113,30 +113,20 @@ struct PackageScanner {
         }
     }
 
-    /// Wait for a process to complete with a timeout
+    /// Wait for a process to complete with a timeout (non-blocking polling)
     private func waitForProcessWithTimeout(process: Process, timeoutSeconds: UInt64) async -> Bool {
-        let timeoutNanoseconds = timeoutSeconds * 1_000_000_000
+        let pollIntervalNanoseconds: UInt64 = 100_000_000 // 100ms
+        let maxPolls = (timeoutSeconds * 1_000_000_000) / pollIntervalNanoseconds
 
-        return await withTaskGroup(of: Bool.self) { group in
-            // Task 1: Wait for process to complete
-            group.addTask {
-                process.waitUntilExit()
+        for _ in 0..<maxPolls {
+            if !process.isRunning {
                 return true
             }
-
-            // Task 2: Timeout
-            group.addTask {
-                try? await Task.sleep(nanoseconds: timeoutNanoseconds)
-                return false
-            }
-
-            // Return the first result (either completion or timeout)
-            if let result = await group.next() {
-                group.cancelAll()
-                return result
-            }
-            return false
+            try? await Task.sleep(nanoseconds: pollIntervalNanoseconds)
         }
+
+        // Final check
+        return !process.isRunning
     }
 
     enum ScannerError: LocalizedError {
