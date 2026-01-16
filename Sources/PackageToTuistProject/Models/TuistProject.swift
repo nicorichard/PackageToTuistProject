@@ -1,0 +1,61 @@
+import Foundation
+
+/// Intermediate representation of a Tuist project
+struct TuistProject {
+    let name: String
+    let path: String
+    let targets: [TuistTarget]
+}
+
+/// Intermediate representation of a Tuist target
+struct TuistTarget {
+    let name: String
+    let product: ProductType
+    let bundleId: String
+    let buildableFolders: [String]
+    let dependencies: [TuistDependency]
+    let destinations: String
+
+    enum ProductType: String {
+        case staticFramework
+        case framework
+        case staticLibrary
+        case unitTests
+
+        var swiftCode: String {
+            switch self {
+            case .staticFramework: return ".staticFramework"
+            case .framework: return ".framework"
+            case .staticLibrary: return ".staticLibrary"
+            case .unitTests: return ".unitTests"
+            }
+        }
+    }
+}
+
+/// External dependency to be collected for Tuist/Package.swift
+struct ExternalDependency: Equatable, Hashable {
+    let identity: String
+    let url: String
+    let requirement: DependencyRequirement
+
+    enum DependencyRequirement: Equatable, Hashable {
+        case range(from: String, to: String)
+        case exact(String)
+        case branch(String)
+        case revision(String)
+
+        var swiftCode: String {
+            switch self {
+            case .range(let from, _):
+                return "from: \"\(from)\""
+            case .exact(let version):
+                return "exact: \"\(version)\""
+            case .branch(let branch):
+                return "branch: \"\(branch)\""
+            case .revision(let revision):
+                return "revision: \"\(revision)\""
+            }
+        }
+    }
+}
