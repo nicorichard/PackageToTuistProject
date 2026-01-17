@@ -377,7 +377,10 @@ struct DependencyCollectorTests {
         collector.registerLocalPackage(
             identity: "MyPackage",
             relativePath: "../MyPackage",
-            products: ["MyProduct", "AnotherProduct"]
+            products: [
+                (name: "MyProduct", targets: ["MyTarget"]),
+                (name: "AnotherProduct", targets: ["AnotherTarget"])
+            ]
         )
 
         #expect(collector.isLocalPackage(identity: "MyPackage"))
@@ -448,7 +451,7 @@ struct DependencyCollectorTests {
         collector.registerLocalPackage(
             identity: "MyPackage",
             relativePath: "../MyPackage",
-            products: ["MyProduct"]
+            products: [(name: "MyProduct", targets: ["MyTarget"])]
         )
 
         #expect(collector.isLocalPackage(identity: "MYPACKAGE"))
@@ -463,7 +466,10 @@ struct DependencyCollectorTests {
         collector.registerLocalPackage(
             identity: "MyPackage",
             relativePath: "../MyPackage",
-            products: ["ProductA", "ProductB"]
+            products: [
+                (name: "ProductA", targets: ["TargetA"]),
+                (name: "ProductB", targets: ["TargetB"])
+            ]
         )
 
         #expect(collector.packageIdentity(forProduct: "ProductA") == "MyPackage")
@@ -505,7 +511,7 @@ struct DependencyCollectorTests {
         collector.registerLocalPackage(
             identity: "OtherPackage",
             relativePath: "../OtherPackage",
-            products: ["OtherProduct"]
+            products: [(name: "OtherProduct", targets: ["OtherTarget"])]
         )
 
         let result = collector.classifyDependency(
@@ -516,6 +522,66 @@ struct DependencyCollectorTests {
         )
 
         #expect(result == .project(path: "../OtherPackage", target: "OtherProduct"))
+    }
+
+    @Test("targets(forProduct:) returns correct targets for single-target product")
+    func targetsForProductSingleTarget() {
+        var collector = DependencyCollector()
+        collector.registerLocalPackage(
+            identity: "MyPackage",
+            relativePath: "../MyPackage",
+            products: [(name: "MyProduct", targets: ["MyTarget"])]
+        )
+
+        let targets = collector.targets(forProduct: "MyProduct")
+        #expect(targets == ["MyTarget"])
+    }
+
+    @Test("targets(forProduct:) returns correct targets for multi-target product")
+    func targetsForProductMultiTarget() {
+        var collector = DependencyCollector()
+        collector.registerLocalPackage(
+            identity: "MyPackage",
+            relativePath: "../MyPackage",
+            products: [(name: "MyProduct", targets: ["TargetA", "TargetB", "TargetC"])]
+        )
+
+        let targets = collector.targets(forProduct: "MyProduct")
+        #expect(targets == ["TargetA", "TargetB", "TargetC"])
+    }
+
+    @Test("targets(forProduct:) returns nil for unknown product")
+    func targetsForProductUnknown() {
+        var collector = DependencyCollector()
+        collector.registerLocalPackage(
+            identity: "MyPackage",
+            relativePath: "../MyPackage",
+            products: [(name: "MyProduct", targets: ["MyTarget"])]
+        )
+
+        let targets = collector.targets(forProduct: "UnknownProduct")
+        #expect(targets == nil)
+    }
+
+    @Test("handles multiple products with different target counts")
+    func multipleProductsWithDifferentTargets() {
+        var collector = DependencyCollector()
+        collector.registerLocalPackage(
+            identity: "MyPackage",
+            relativePath: "../MyPackage",
+            products: [
+                (name: "ProductA", targets: ["TargetA"]),
+                (name: "ProductB", targets: ["TargetB1", "TargetB2"]),
+                (name: "ProductC", targets: ["TargetC1", "TargetC2", "TargetC3"])
+            ]
+        )
+
+        #expect(collector.targets(forProduct: "ProductA") == ["TargetA"])
+        #expect(collector.targets(forProduct: "ProductB") == ["TargetB1", "TargetB2"])
+        #expect(collector.targets(forProduct: "ProductC") == ["TargetC1", "TargetC2", "TargetC3"])
+        #expect(collector.packageIdentity(forProduct: "ProductA") == "MyPackage")
+        #expect(collector.packageIdentity(forProduct: "ProductB") == "MyPackage")
+        #expect(collector.packageIdentity(forProduct: "ProductC") == "MyPackage")
     }
 }
 
@@ -1165,6 +1231,167 @@ struct PackageConverterTests {
 
         #expect(frameworkProject.targets[0].product == .framework)
         #expect(staticLibProject.targets[0].product == .staticLibrary)
+    }
+
+    @Test("resolves multi-target product dependency to individual target dependencies")
+    func convertsMultiTargetProductDependency() {
+        let converter = PackageConverter(
+            bundleIdPrefix: "com.example",
+            productType: "staticFramework"
+        )
+
+        // Package that depends on a multi-target product from another package
+        let packageJSON = """
+        {
+            "name": "ConsumerPackage",
+            "path": "/path/to/ConsumerPackage",
+            "products": [],
+            "targets": [
+                {
+                    "name": "ConsumerTarget",
+                    "type": "library",
+                    "path": "Sources/ConsumerTarget",
+                    "product_dependencies": ["MultiTargetLib"]
+                }
+            ],
+            "dependencies": [
+                {"identity": "providerpackage", "type": "fileSystem", "path": "../ProviderPackage"}
+            ]
+        }
+        """
+
+        let package = try! JSONDecoder().decode(
+            PackageDescription.self,
+            from: packageJSON.data(using: .utf8)!
+        )
+
+        // Set up collector with a product that has multiple targets
+        var collector = DependencyCollector()
+        collector.registerLocalPackage(
+            identity: "ProviderPackage",
+            relativePath: "../ProviderPackage",
+            products: [(name: "MultiTargetLib", targets: ["TargetA", "TargetB"])]
+        )
+
+        let project = converter.convert(
+            package: package,
+            packagePath: URL(fileURLWithPath: "/path/to/ConsumerPackage/Package.swift"),
+            collector: collector,
+            allDescriptions: [:]
+        )
+
+        // Should have dependencies on both targets from the product
+        let consumerTarget = project.targets.first { $0.name == "ConsumerTarget" }!
+        #expect(consumerTarget.dependencies.count == 2)
+        #expect(consumerTarget.dependencies.contains(.project(path: "../ProviderPackage", target: "TargetA")))
+        #expect(consumerTarget.dependencies.contains(.project(path: "../ProviderPackage", target: "TargetB")))
+    }
+
+    @Test("handles multiple products with different target counts correctly")
+    func convertsMultipleProductsWithVariousTargets() {
+        let converter = PackageConverter(
+            bundleIdPrefix: "com.example",
+            productType: "staticFramework"
+        )
+
+        let packageJSON = """
+        {
+            "name": "ConsumerPackage",
+            "path": "/path/to/ConsumerPackage",
+            "products": [],
+            "targets": [
+                {
+                    "name": "ConsumerTarget",
+                    "type": "library",
+                    "path": "Sources/ConsumerTarget",
+                    "product_dependencies": ["SingleTargetLib", "MultiTargetLib"]
+                }
+            ],
+            "dependencies": [
+                {"identity": "providerpackage", "type": "fileSystem", "path": "../ProviderPackage"}
+            ]
+        }
+        """
+
+        let package = try! JSONDecoder().decode(
+            PackageDescription.self,
+            from: packageJSON.data(using: .utf8)!
+        )
+
+        var collector = DependencyCollector()
+        collector.registerLocalPackage(
+            identity: "ProviderPackage",
+            relativePath: "../ProviderPackage",
+            products: [
+                (name: "SingleTargetLib", targets: ["SingleTarget"]),
+                (name: "MultiTargetLib", targets: ["TargetA", "TargetB", "TargetC"])
+            ]
+        )
+
+        let project = converter.convert(
+            package: package,
+            packagePath: URL(fileURLWithPath: "/path/to/ConsumerPackage/Package.swift"),
+            collector: collector,
+            allDescriptions: [:]
+        )
+
+        // Should have 1 + 3 = 4 dependencies
+        let consumerTarget = project.targets.first { $0.name == "ConsumerTarget" }!
+        #expect(consumerTarget.dependencies.count == 4)
+        #expect(consumerTarget.dependencies.contains(.project(path: "../ProviderPackage", target: "SingleTarget")))
+        #expect(consumerTarget.dependencies.contains(.project(path: "../ProviderPackage", target: "TargetA")))
+        #expect(consumerTarget.dependencies.contains(.project(path: "../ProviderPackage", target: "TargetB")))
+        #expect(consumerTarget.dependencies.contains(.project(path: "../ProviderPackage", target: "TargetC")))
+    }
+
+    @Test("single target product still works correctly")
+    func convertsSingleTargetProductDependency() {
+        let converter = PackageConverter(
+            bundleIdPrefix: "com.example",
+            productType: "staticFramework"
+        )
+
+        let packageJSON = """
+        {
+            "name": "ConsumerPackage",
+            "path": "/path/to/ConsumerPackage",
+            "products": [],
+            "targets": [
+                {
+                    "name": "ConsumerTarget",
+                    "type": "library",
+                    "path": "Sources/ConsumerTarget",
+                    "product_dependencies": ["SingleLib"]
+                }
+            ],
+            "dependencies": [
+                {"identity": "providerpackage", "type": "fileSystem", "path": "../ProviderPackage"}
+            ]
+        }
+        """
+
+        let package = try! JSONDecoder().decode(
+            PackageDescription.self,
+            from: packageJSON.data(using: .utf8)!
+        )
+
+        var collector = DependencyCollector()
+        collector.registerLocalPackage(
+            identity: "ProviderPackage",
+            relativePath: "../ProviderPackage",
+            products: [(name: "SingleLib", targets: ["SingleTarget"])]
+        )
+
+        let project = converter.convert(
+            package: package,
+            packagePath: URL(fileURLWithPath: "/path/to/ConsumerPackage/Package.swift"),
+            collector: collector,
+            allDescriptions: [:]
+        )
+
+        let consumerTarget = project.targets.first { $0.name == "ConsumerTarget" }!
+        #expect(consumerTarget.dependencies.count == 1)
+        #expect(consumerTarget.dependencies[0] == .project(path: "../ProviderPackage", target: "SingleTarget"))
     }
 }
 

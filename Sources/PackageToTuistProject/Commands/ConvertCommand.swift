@@ -167,11 +167,11 @@ struct ConvertCommand {
         for (packagePath, description) in descriptions {
             let packageDir = packagePath.deletingLastPathComponent()
             let relativePath = calculateRelativePath(from: rootURL, to: packageDir)
-            let productNames = description.products.map { $0.name }
+            let products = description.products.map { (name: $0.name, targets: $0.targets) }
             collector.registerLocalPackage(
                 identity: description.name,
                 relativePath: relativePath,
-                products: productNames
+                products: products
             )
         }
 
@@ -279,11 +279,12 @@ struct ConvertCommand {
         for (otherPath, otherDescription) in descriptions {
             let otherDir = otherPath.deletingLastPathComponent()
             let relativePath = calculateRelativePath(from: packageDir, to: otherDir)
+            let products = otherDescription.products.map { (name: $0.name, targets: $0.targets) }
 
             collector.registerLocalPackage(
                 identity: otherDescription.name,
                 relativePath: relativePath,
-                products: otherDescription.products.map { $0.name }
+                products: products
             )
         }
     }

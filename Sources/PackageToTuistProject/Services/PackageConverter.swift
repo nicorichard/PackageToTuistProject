@@ -92,13 +92,13 @@ struct PackageConverter {
         // Add product dependencies (external or other packages)
         if let productDeps = target.productDependencies {
             for productName in productDeps {
-                let dep = classifyProductDependency(
+                let deps = classifyProductDependency(
                     productName: productName,
                     package: package,
                     packagePath: packagePath,
                     collector: collector
                 )
-                dependencies.append(dep)
+                dependencies.append(contentsOf: deps)
             }
         }
 
@@ -121,7 +121,16 @@ struct PackageConverter {
         package: PackageDescription,
         packagePath: URL,
         collector: DependencyCollector
-    ) -> TuistDependency {
+    ) -> [TuistDependency] {
+        // Check if there's a known product-to-targets mapping (local package)
+        if let targets = collector.targets(forProduct: productName),
+           let packageIdentity = collector.packageIdentity(forProduct: productName),
+           let localPath = collector.localPackagePath(for: packageIdentity)
+        {
+            // Return a dependency for each target in the product
+            return targets.map { .project(path: localPath, target: $0) }
+        }
+
         // Check if the product comes from a local package dependency
         if let deps = package.dependencies {
             for dep in deps {
@@ -139,7 +148,11 @@ struct PackageConverter {
                             productLower.contains(identityLower) ||
                             identityLower.contains(productLower)
                         {
-                            return .project(path: localPath, target: productName)
+                            // Check if we know the targets for this product
+                            if let targets = collector.targets(forProduct: productName), !targets.isEmpty {
+                                return targets.map { .project(path: localPath, target: $0) }
+                            }
+                            return [.project(path: localPath, target: productName)]
                         }
                     }
                 }
@@ -147,12 +160,15 @@ struct PackageConverter {
 
             // Check if it might match another local package
             if let localPath = collector.localPackagePath(for: productName) {
-                return .project(path: localPath, target: productName)
+                if let targets = collector.targets(forProduct: productName), !targets.isEmpty {
+                    return targets.map { .project(path: localPath, target: $0) }
+                }
+                return [.project(path: localPath, target: productName)]
             }
         }
 
         // It's an external dependency
-        return .external(name: productName)
+        return [.external(name: productName)]
     }
 
     private func determineDestinations(from platforms: [PackageDescription.Platform]?) -> String {

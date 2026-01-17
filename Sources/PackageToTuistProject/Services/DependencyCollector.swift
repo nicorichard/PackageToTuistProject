@@ -11,15 +11,19 @@ struct DependencyCollector {
     /// Map of product name to the package identity that provides it
     private var productToPackage: [String: String] = [:]
 
+    /// Map of product name to the targets it contains
+    private var productToTargets: [String: [String]] = [:]
+
     /// Register a local package and its products
     mutating func registerLocalPackage(
         identity: String,
         relativePath: String,
-        products: [String]
+        products: [(name: String, targets: [String])]
     ) {
         localPackages[identity.lowercased()] = relativePath
         for product in products {
-            productToPackage[product] = identity
+            productToPackage[product.name] = identity
+            productToTargets[product.name] = product.targets
         }
     }
 
@@ -45,6 +49,11 @@ struct DependencyCollector {
     /// Find which package provides a product
     func packageIdentity(forProduct product: String) -> String? {
         return productToPackage[product]
+    }
+
+    /// Get the targets that a product contains
+    func targets(forProduct product: String) -> [String]? {
+        return productToTargets[product]
     }
 
     /// Get all collected external dependencies
