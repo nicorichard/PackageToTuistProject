@@ -102,6 +102,13 @@ struct PackageConverter {
             }
         }
 
+        // Deduplicate dependencies (products may share targets)
+        let uniqueDependencies = dependencies.reduce(into: [TuistDependency]()) { result, dep in
+            if !result.contains(dep) {
+                result.append(dep)
+            }
+        }
+
         if verbose {
             print("  Converting target: \(target.name) -> \(productType.rawValue)")
         }
@@ -111,7 +118,7 @@ struct PackageConverter {
             product: productType,
             bundleId: bundleId,
             buildableFolders: buildableFolders,
-            dependencies: dependencies,
+            dependencies: uniqueDependencies,
             destinations: destinations
         )
     }

@@ -1344,6 +1344,72 @@ struct PackageConverterTests {
         #expect(consumerTarget.dependencies.contains(.project(path: "../ProviderPackage", target: "TargetC")))
     }
 
+    @Test("deduplicates dependencies when products share targets")
+    func deduplicatesSharedTargets() {
+        let converter = PackageConverter(
+            bundleIdPrefix: "com.example",
+            productType: "staticFramework"
+        )
+
+        // Package that depends on two products that share a common target
+        // CoreLib -> [Core, Utils]
+        // NetworkLib -> [Network, Utils]
+        // Both share "Utils" target
+        let packageJSON = """
+        {
+            "name": "ConsumerPackage",
+            "path": "/path/to/ConsumerPackage",
+            "products": [],
+            "targets": [
+                {
+                    "name": "ConsumerTarget",
+                    "type": "library",
+                    "path": "Sources/ConsumerTarget",
+                    "product_dependencies": ["CoreLib", "NetworkLib"]
+                }
+            ],
+            "dependencies": [
+                {"identity": "networkstack", "type": "fileSystem", "path": "../NetworkStack"}
+            ]
+        }
+        """
+
+        let package = try! JSONDecoder().decode(
+            PackageDescription.self,
+            from: packageJSON.data(using: .utf8)!
+        )
+
+        // Set up collector with two products that share the "Utils" target
+        var collector = DependencyCollector()
+        collector.registerLocalPackage(
+            identity: "NetworkStack",
+            relativePath: "../NetworkStack",
+            products: [
+                (name: "CoreLib", targets: ["Core", "Utils"]),
+                (name: "NetworkLib", targets: ["Network", "Utils"])
+            ]
+        )
+
+        let project = converter.convert(
+            package: package,
+            packagePath: URL(fileURLWithPath: "/path/to/ConsumerPackage/Package.swift"),
+            collector: collector,
+            allDescriptions: [:]
+        )
+
+        // Should have 3 unique dependencies: Core, Utils, Network (Utils deduplicated)
+        let consumerTarget = project.targets.first { $0.name == "ConsumerTarget" }!
+        #expect(consumerTarget.dependencies.count == 3)
+        #expect(consumerTarget.dependencies.contains(.project(path: "../NetworkStack", target: "Core")))
+        #expect(consumerTarget.dependencies.contains(.project(path: "../NetworkStack", target: "Utils")))
+        #expect(consumerTarget.dependencies.contains(.project(path: "../NetworkStack", target: "Network")))
+
+        // Verify order is preserved (Core, Utils from CoreLib, then Network from NetworkLib)
+        #expect(consumerTarget.dependencies[0] == .project(path: "../NetworkStack", target: "Core"))
+        #expect(consumerTarget.dependencies[1] == .project(path: "../NetworkStack", target: "Utils"))
+        #expect(consumerTarget.dependencies[2] == .project(path: "../NetworkStack", target: "Network"))
+    }
+
     @Test("single target product still works correctly")
     func convertsSingleTargetProductDependency() {
         let converter = PackageConverter(
