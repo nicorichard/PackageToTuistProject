@@ -215,22 +215,34 @@ struct PackageConverter {
             return ".iOS" // Default to iOS if no platforms specified
         }
 
-        // For simplicity, return the first platform's destination
-        // Could be enhanced to support multiple destinations
-        let platform = platforms[0]
-        switch platform.name.lowercased() {
-        case "ios":
-            return ".iOS"
-        case "macos":
-            return ".macOS"
-        case "tvos":
-            return ".tvOS"
-        case "watchos":
-            return ".watchOS"
-        case "visionos":
-            return ".visionOS"
-        default:
+        // Convert all platforms to Tuist destination format
+        let destinations = platforms.compactMap { platform -> String? in
+            switch platform.name.lowercased() {
+            case "ios":
+                return ".iOS"
+            case "macos":
+                return ".macOS"
+            case "tvos":
+                return ".tvOS"
+            case "watchos":
+                return ".watchOS"
+            case "visionos":
+                return ".visionOS"
+            default:
+                return nil
+            }
+        }
+
+        guard !destinations.isEmpty else {
             return ".iOS"
         }
+
+        // Single destination: .iOS
+        // Multiple destinations: Destinations([Destinations.iOS, .macOS].flatMap { $0 })
+        if destinations.count == 1 {
+            return destinations[0]
+        }
+        let list = "Destinations\(destinations[0]), " + destinations.dropFirst().joined(separator: ", ")
+        return "Destinations([\(list)].flatMap { $0 })"
     }
 }
