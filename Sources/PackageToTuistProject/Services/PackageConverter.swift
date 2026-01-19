@@ -43,6 +43,9 @@ struct PackageConverter {
         let destinations = determineDestinations(from: package.platforms)
         let deploymentTargets = determineDeploymentTargets(from: package.platforms)
 
+        // Collect binary target names for dependency resolution
+        let binaryTargetNames = Set(package.targets.filter { $0.type == "binary" }.map { $0.name })
+
         // Convert each target
         var tuistTargets: [TuistTarget] = []
         for target in package.targets {
@@ -54,6 +57,14 @@ struct PackageConverter {
                 continue
             }
 
+            // Skip binary targets - they become external dependencies
+            if target.type == "binary" {
+                if verbose {
+                    print("  Skipping binary target (will be external): \(target.name)")
+                }
+                continue
+            }
+
             let tuistTarget = try convertTarget(
                 target: target,
                 package: package,
@@ -61,7 +72,8 @@ struct PackageConverter {
                 collector: collector,
                 allDescriptions: allDescriptions,
                 destinations: destinations,
-                deploymentTargets: deploymentTargets
+                deploymentTargets: deploymentTargets,
+                binaryTargetNames: binaryTargetNames
             )
             tuistTargets.append(tuistTarget)
         }
@@ -80,7 +92,8 @@ struct PackageConverter {
         collector: DependencyCollector,
         allDescriptions: [String: PackageDescription],
         destinations: String,
-        deploymentTargets: String?
+        deploymentTargets: String?,
+        binaryTargetNames: Set<String>
     ) throws -> TuistTarget {
         // Determine product type
         let productType: TuistTarget.ProductType
@@ -102,7 +115,12 @@ struct PackageConverter {
         // Add target dependencies (same package)
         if let targetDeps = target.targetDependencies {
             for dep in targetDeps {
-                dependencies.append(.target(name: dep))
+                // Binary targets become external dependencies
+                if binaryTargetNames.contains(dep) {
+                    dependencies.append(.external(name: dep))
+                } else {
+                    dependencies.append(.target(name: dep))
+                }
             }
         }
 

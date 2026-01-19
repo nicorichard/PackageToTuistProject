@@ -28,6 +28,29 @@ actor LoadingProgress {
     }
 }
 
+/// Actor to track processing progress in a thread-safe way
+actor ProcessingProgress {
+    private(set) var completed = 0
+    let total: Int
+
+    init(total: Int) {
+        self.total = total
+    }
+
+    func increment(packageName: String) {
+        completed += 1
+        print("  [\(completed)/\(total)] \(packageName) ✓")
+        fflush(stdout)
+    }
+
+    func incrementFailed(packageName: String, error: String) {
+        completed += 1
+        print("  [\(completed)/\(total)] \(packageName) ✗")
+        print("    Error: \(error)")
+        fflush(stdout)
+    }
+}
+
 /// Main command that orchestrates the conversion process
 struct ConvertCommand {
     let rootDirectory: String
@@ -160,20 +183,11 @@ struct ConvertCommand {
         descriptions: [URL: PackageDescription],
         rootURL: URL
     ) async throws {
-        // Build base dependency collector with all packages
-        var collector = DependencyCollector()
+        // Pre-compute relative path matrix: O(n²) but only happens once
+        let pathMatrix = buildPathMatrix(descriptions: descriptions)
 
-        // Register all local packages
-        for (packagePath, description) in descriptions {
-            let packageDir = packagePath.deletingLastPathComponent()
-            let relativePath = calculateRelativePath(from: rootURL, to: packageDir)
-            let products = description.products.map { (name: $0.name, targets: $0.targets) }
-            collector.registerLocalPackage(
-                identity: description.name,
-                relativePath: relativePath,
-                products: products
-            )
-        }
+        // Build base dependency collector with external dependencies only
+        var baseCollector = DependencyCollector()
 
         // Collect external dependencies
         for description in descriptions.values {
@@ -185,13 +199,13 @@ struct ConvertCommand {
                             url: url,
                             requirement: requirement
                         )
-                        collector.registerExternalDependency(externalDep)
+                        baseCollector.registerExternalDependency(externalDep)
                     }
                 }
             }
         }
 
-        // Create converter and writer
+        // Create converter and writer (both are thread-safe for different files)
         let converter = PackageConverter(
             bundleIdPrefix: bundleIdPrefix,
             productType: productType,
@@ -202,35 +216,72 @@ struct ConvertCommand {
             uniqueKeysWithValues: descriptions.map { ($0.key.path, $0.value) }
         )
 
-        // Process each package: convert and write
+        // Process packages in parallel with controlled concurrency
         let sortedDescriptions = descriptions.sorted { $0.value.name < $1.value.name }
-        for (index, (packagePath, description)) in sortedDescriptions.enumerated() {
-            print("  [\(index + 1)/\(descriptions.count)] \(description.name)", terminator: "")
-            fflush(stdout)
+        let progress = ProcessingProgress(total: descriptions.count)
 
-            // Update relative paths for this package's dependencies
-            var packageCollector = collector
-            updateRelativePaths(
-                collector: &packageCollector,
-                fromPackage: packagePath,
-                descriptions: descriptions
-            )
+        // Capture values for use in task group (Swift 6 concurrency safety)
+        let isDryRun = dryRun
+        let isVerbose = verbose
+        let externalDepsCollector = baseCollector  // Immutable copy for task group
 
-            // Convert
-            let project = try converter.convert(
-                package: description,
-                packagePath: packagePath,
-                collector: packageCollector,
-                allDescriptions: allDescriptions
-            )
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            var inFlight = 0
+            var iterator = sortedDescriptions.makeIterator()
 
-            // Write
-            try projectWriter.write(project: project, dryRun: dryRun, verbose: verbose)
-            print(" ✓")
+            // Start initial batch
+            while inFlight < maxConcurrentLoads, let (packagePath, description) = iterator.next() {
+                group.addTask {
+                    // Build per-package collector using pre-computed path matrix
+                    let packageCollector = self.buildPackageCollector(
+                        base: externalDepsCollector,
+                        fromPackage: packagePath,
+                        descriptions: descriptions,
+                        pathMatrix: pathMatrix
+                    )
+
+                    // Convert
+                    let project = try converter.convert(
+                        package: description,
+                        packagePath: packagePath,
+                        collector: packageCollector,
+                        allDescriptions: allDescriptions
+                    )
+
+                    // Write (each package writes to its own file)
+                    try projectWriter.write(project: project, dryRun: isDryRun, verbose: isVerbose)
+                    await progress.increment(packageName: description.name)
+                }
+                inFlight += 1
+            }
+
+            // As each completes, start the next
+            for try await _ in group {
+                if let (packagePath, description) = iterator.next() {
+                    group.addTask {
+                        let packageCollector = self.buildPackageCollector(
+                            base: externalDepsCollector,
+                            fromPackage: packagePath,
+                            descriptions: descriptions,
+                            pathMatrix: pathMatrix
+                        )
+
+                        let project = try converter.convert(
+                            package: description,
+                            packagePath: packagePath,
+                            collector: packageCollector,
+                            allDescriptions: allDescriptions
+                        )
+
+                        try projectWriter.write(project: project, dryRun: isDryRun, verbose: isVerbose)
+                        await progress.increment(packageName: description.name)
+                    }
+                }
+            }
         }
 
         // Validate external dependencies
-        let externalDeps = collector.allExternalDependencies()
+        let externalDeps = externalDepsCollector.allExternalDependencies()
         if !externalDeps.isEmpty {
             let validator = TuistPackageValidator()
             let tuistRootDir = rootURL.deletingLastPathComponent()
@@ -242,6 +293,49 @@ struct ConvertCommand {
             )
             validator.printWarnings(result: result)
         }
+    }
+
+    /// Pre-compute all pairwise relative paths between packages
+    private func buildPathMatrix(
+        descriptions: [URL: PackageDescription]
+    ) -> [URL: [URL: String]] {
+        var matrix: [URL: [URL: String]] = [:]
+
+        for fromPath in descriptions.keys {
+            let fromDir = fromPath.deletingLastPathComponent()
+            matrix[fromPath] = [:]
+
+            for toPath in descriptions.keys {
+                let toDir = toPath.deletingLastPathComponent()
+                matrix[fromPath]![toPath] = calculateRelativePath(from: fromDir, to: toDir)
+            }
+        }
+
+        return matrix
+    }
+
+    /// Build a collector for a specific package using pre-computed paths
+    private func buildPackageCollector(
+        base: DependencyCollector,
+        fromPackage packagePath: URL,
+        descriptions: [URL: PackageDescription],
+        pathMatrix: [URL: [URL: String]]
+    ) -> DependencyCollector {
+        var collector = base
+
+        // Register all local packages with paths relative to this package
+        for (otherPath, otherDescription) in descriptions {
+            let relativePath = pathMatrix[packagePath]![otherPath]!
+            let products = otherDescription.products.map { (name: $0.name, targets: $0.targets) }
+
+            collector.registerLocalPackage(
+                identity: otherDescription.name,
+                relativePath: relativePath,
+                products: products
+            )
+        }
+
+        return collector
     }
 
     private func calculateRelativePath(from base: URL, to target: URL) -> String {
@@ -267,26 +361,6 @@ struct ConvertCommand {
         result.append(contentsOf: downPath.map(String.init))
 
         return result.joined(separator: "/")
-    }
-
-    private func updateRelativePaths(
-        collector: inout DependencyCollector,
-        fromPackage packagePath: URL,
-        descriptions: [URL: PackageDescription]
-    ) {
-        let packageDir = packagePath.deletingLastPathComponent()
-
-        for (otherPath, otherDescription) in descriptions {
-            let otherDir = otherPath.deletingLastPathComponent()
-            let relativePath = calculateRelativePath(from: packageDir, to: otherDir)
-            let products = otherDescription.products.map { (name: $0.name, targets: $0.targets) }
-
-            collector.registerLocalPackage(
-                identity: otherDescription.name,
-                relativePath: relativePath,
-                products: products
-            )
-        }
     }
 
     private func createExternalDependency(

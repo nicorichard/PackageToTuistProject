@@ -60,7 +60,8 @@ struct ProjectWriter {
         }
 
         // Add settings with -package-name flag for package access level support
-        code += ",\n            settings: .settings(base: [\"OTHER_SWIFT_FLAGS\": [\"-package-name\", \"\(target.packageName)\"]])"
+        // and STRING_CATALOG_GENERATE_SYMBOLS which is the default for Swift packages
+        code += ",\n            settings: .settings(base: [\"OTHER_SWIFT_FLAGS\": [\"-package-name\", \"\(target.packageName)\"], \"STRING_CATALOG_GENERATE_SYMBOLS\": \"YES\"])"
 
         code += "\n        )"
 
