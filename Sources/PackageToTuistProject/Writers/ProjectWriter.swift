@@ -39,8 +39,13 @@ struct ProjectWriter {
                     destinations: \(target.destinations),
                     product: \(target.product.swiftCode),
                     bundleId: "\(target.bundleId)",
-                    buildableFolders: [\(target.buildableFolders.map { "\"\($0)\"" }.joined(separator: ", "))]
         """
+
+        if let deploymentTargets = target.deploymentTargets {
+            code += "\n            deploymentTargets: \(deploymentTargets),"
+        }
+
+        code += "\n            buildableFolders: [\(target.buildableFolders.map { "\"\($0)\"" }.joined(separator: ", "))]"
 
         if !target.dependencies.isEmpty {
             code += ",\n            dependencies: [\n"

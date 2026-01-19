@@ -39,8 +39,9 @@ struct PackageConverter {
     ) throws -> TuistProject {
         let packageDir = packagePath.deletingLastPathComponent()
 
-        // Determine destinations from platforms
+        // Determine destinations and deployment targets from platforms
         let destinations = determineDestinations(from: package.platforms)
+        let deploymentTargets = determineDeploymentTargets(from: package.platforms)
 
         // Convert each target
         var tuistTargets: [TuistTarget] = []
@@ -59,7 +60,8 @@ struct PackageConverter {
                 packagePath: packagePath,
                 collector: collector,
                 allDescriptions: allDescriptions,
-                destinations: destinations
+                destinations: destinations,
+                deploymentTargets: deploymentTargets
             )
             tuistTargets.append(tuistTarget)
         }
@@ -77,7 +79,8 @@ struct PackageConverter {
         packagePath: URL,
         collector: DependencyCollector,
         allDescriptions: [String: PackageDescription],
-        destinations: String
+        destinations: String,
+        deploymentTargets: String?
     ) throws -> TuistTarget {
         // Determine product type
         let productType: TuistTarget.ProductType
@@ -134,6 +137,7 @@ struct PackageConverter {
             buildableFolders: buildableFolders,
             dependencies: uniqueDependencies,
             destinations: destinations,
+            deploymentTargets: deploymentTargets,
             packageName: package.name
         )
     }
@@ -244,5 +248,49 @@ struct PackageConverter {
         }
         let list = "Destinations\(destinations[0]), " + destinations.dropFirst().joined(separator: ", ")
         return "Destinations([\(list)].flatMap { $0 })"
+    }
+
+    private func determineDeploymentTargets(from platforms: [PackageDescription.Platform]?) -> String? {
+        guard let platforms = platforms, !platforms.isEmpty else {
+            return nil
+        }
+
+        // Collect versions by platform
+        var versions: [String: String] = [:]
+        for platform in platforms {
+            switch platform.name.lowercased() {
+            case "ios":
+                versions["iOS"] = platform.version
+            case "macos":
+                versions["macOS"] = platform.version
+            case "watchos":
+                versions["watchOS"] = platform.version
+            case "tvos":
+                versions["tvOS"] = platform.version
+            case "visionos":
+                versions["visionOS"] = platform.version
+            default:
+                break
+            }
+        }
+
+        guard !versions.isEmpty else {
+            return nil
+        }
+
+        // Single platform: .iOS("15.0")
+        // Multiple platforms: .multiplatform(iOS: "15.0", macOS: "12.0")
+        // Order must be: iOS, macOS, watchOS, tvOS, visionOS
+        if versions.count == 1 {
+            let (key, version) = versions.first!
+            return ".\(key)(\"\(version)\")"
+        }
+
+        let orderedKeys = ["iOS", "macOS", "watchOS", "tvOS", "visionOS"]
+        let args = orderedKeys.compactMap { key -> String? in
+            guard let version = versions[key] else { return nil }
+            return "\(key): \"\(version)\""
+        }.joined(separator: ", ")
+        return ".multiplatform(\(args))"
     }
 }

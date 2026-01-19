@@ -15,6 +15,7 @@ struct TuistTarget {
     let buildableFolders: [String]
     let dependencies: [TuistDependency]
     let destinations: String
+    let deploymentTargets: String?
     let packageName: String
 
     enum ProductType: String {
