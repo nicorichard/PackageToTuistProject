@@ -932,7 +932,7 @@ struct PackageDescriptionTests {
 @Suite("PackageConverter")
 struct PackageConverterTests {
     @Test("converts simple package to Tuist project")
-    func convertSimplePackage() {
+    func convertSimplePackage() throws {
         let converter = PackageConverter(
             bundleIdPrefix: "com.example",
             productType: "staticFramework"
@@ -959,7 +959,7 @@ struct PackageConverterTests {
         )
 
         let collector = DependencyCollector()
-        let project = converter.convert(
+        let project = try converter.convert(
             package: package,
             packagePath: URL(fileURLWithPath: "/path/to/MyPackage/Package.swift"),
             collector: collector,
@@ -974,7 +974,7 @@ struct PackageConverterTests {
     }
 
     @Test("skips executable targets")
-    func skipsExecutableTargets() {
+    func skipsExecutableTargets() throws {
         let converter = PackageConverter(
             bundleIdPrefix: "com.example",
             productType: "staticFramework"
@@ -998,7 +998,7 @@ struct PackageConverterTests {
         )
 
         let collector = DependencyCollector()
-        let project = converter.convert(
+        let project = try converter.convert(
             package: package,
             packagePath: URL(fileURLWithPath: "/path/to/Package.swift"),
             collector: collector,
@@ -1010,7 +1010,7 @@ struct PackageConverterTests {
     }
 
     @Test("converts test targets to unitTests product type")
-    func convertsTestTargets() {
+    func convertsTestTargets() throws {
         let converter = PackageConverter(
             bundleIdPrefix: "com.example",
             productType: "staticFramework"
@@ -1033,7 +1033,7 @@ struct PackageConverterTests {
         )
 
         let collector = DependencyCollector()
-        let project = converter.convert(
+        let project = try converter.convert(
             package: package,
             packagePath: URL(fileURLWithPath: "/path/to/Package.swift"),
             collector: collector,
@@ -1044,7 +1044,7 @@ struct PackageConverterTests {
     }
 
     @Test("uses iOS destination by default")
-    func defaultsToiOS() {
+    func defaultsToiOS() throws {
         let converter = PackageConverter(
             bundleIdPrefix: "com.example",
             productType: "staticFramework"
@@ -1067,7 +1067,7 @@ struct PackageConverterTests {
         )
 
         let collector = DependencyCollector()
-        let project = converter.convert(
+        let project = try converter.convert(
             package: package,
             packagePath: URL(fileURLWithPath: "/path/to/Package.swift"),
             collector: collector,
@@ -1078,7 +1078,7 @@ struct PackageConverterTests {
     }
 
     @Test("uses correct destination for macOS platform")
-    func macOSDestination() {
+    func macOSDestination() throws {
         let converter = PackageConverter(
             bundleIdPrefix: "com.example",
             productType: "staticFramework"
@@ -1102,7 +1102,7 @@ struct PackageConverterTests {
         )
 
         let collector = DependencyCollector()
-        let project = converter.convert(
+        let project = try converter.convert(
             package: package,
             packagePath: URL(fileURLWithPath: "/path/to/Package.swift"),
             collector: collector,
@@ -1113,7 +1113,7 @@ struct PackageConverterTests {
     }
 
     @Test("converts target dependencies correctly")
-    func convertsTargetDependencies() {
+    func convertsTargetDependencies() throws {
         let converter = PackageConverter(
             bundleIdPrefix: "com.example",
             productType: "staticFramework"
@@ -1137,7 +1137,7 @@ struct PackageConverterTests {
         )
 
         let collector = DependencyCollector()
-        let project = converter.convert(
+        let project = try converter.convert(
             package: package,
             packagePath: URL(fileURLWithPath: "/path/to/Package.swift"),
             collector: collector,
@@ -1150,7 +1150,7 @@ struct PackageConverterTests {
     }
 
     @Test("converts external product dependencies correctly")
-    func convertsExternalDependencies() {
+    func convertsExternalDependencies() throws {
         let converter = PackageConverter(
             bundleIdPrefix: "com.example",
             productType: "staticFramework"
@@ -1176,7 +1176,7 @@ struct PackageConverterTests {
         )
 
         let collector = DependencyCollector()
-        let project = converter.convert(
+        let project = try converter.convert(
             package: package,
             packagePath: URL(fileURLWithPath: "/path/to/Package.swift"),
             collector: collector,
@@ -1188,7 +1188,7 @@ struct PackageConverterTests {
     }
 
     @Test("respects different product types")
-    func respectsProductType() {
+    func respectsProductType() throws {
         let frameworkConverter = PackageConverter(
             bundleIdPrefix: "com.example",
             productType: "framework"
@@ -1215,14 +1215,14 @@ struct PackageConverterTests {
             from: packageJSON.data(using: .utf8)!
         )
 
-        let frameworkProject = frameworkConverter.convert(
+        let frameworkProject = try frameworkConverter.convert(
             package: package,
             packagePath: URL(fileURLWithPath: "/path/to/Package.swift"),
             collector: DependencyCollector(),
             allDescriptions: [:]
         )
 
-        let staticLibProject = staticLibConverter.convert(
+        let staticLibProject = try staticLibConverter.convert(
             package: package,
             packagePath: URL(fileURLWithPath: "/path/to/Package.swift"),
             collector: DependencyCollector(),
@@ -1234,7 +1234,7 @@ struct PackageConverterTests {
     }
 
     @Test("resolves multi-target product dependency to individual target dependencies")
-    func convertsMultiTargetProductDependency() {
+    func convertsMultiTargetProductDependency() throws {
         let converter = PackageConverter(
             bundleIdPrefix: "com.example",
             productType: "staticFramework"
@@ -1273,7 +1273,7 @@ struct PackageConverterTests {
             products: [(name: "MultiTargetLib", targets: ["TargetA", "TargetB"])]
         )
 
-        let project = converter.convert(
+        let project = try converter.convert(
             package: package,
             packagePath: URL(fileURLWithPath: "/path/to/ConsumerPackage/Package.swift"),
             collector: collector,
@@ -1288,7 +1288,7 @@ struct PackageConverterTests {
     }
 
     @Test("handles multiple products with different target counts correctly")
-    func convertsMultipleProductsWithVariousTargets() {
+    func convertsMultipleProductsWithVariousTargets() throws {
         let converter = PackageConverter(
             bundleIdPrefix: "com.example",
             productType: "staticFramework"
@@ -1328,7 +1328,7 @@ struct PackageConverterTests {
             ]
         )
 
-        let project = converter.convert(
+        let project = try converter.convert(
             package: package,
             packagePath: URL(fileURLWithPath: "/path/to/ConsumerPackage/Package.swift"),
             collector: collector,
@@ -1345,7 +1345,7 @@ struct PackageConverterTests {
     }
 
     @Test("deduplicates dependencies when products share targets")
-    func deduplicatesSharedTargets() {
+    func deduplicatesSharedTargets() throws {
         let converter = PackageConverter(
             bundleIdPrefix: "com.example",
             productType: "staticFramework"
@@ -1390,7 +1390,7 @@ struct PackageConverterTests {
             ]
         )
 
-        let project = converter.convert(
+        let project = try converter.convert(
             package: package,
             packagePath: URL(fileURLWithPath: "/path/to/ConsumerPackage/Package.swift"),
             collector: collector,
@@ -1411,7 +1411,7 @@ struct PackageConverterTests {
     }
 
     @Test("single target product still works correctly")
-    func convertsSingleTargetProductDependency() {
+    func convertsSingleTargetProductDependency() throws {
         let converter = PackageConverter(
             bundleIdPrefix: "com.example",
             productType: "staticFramework"
@@ -1448,7 +1448,7 @@ struct PackageConverterTests {
             products: [(name: "SingleLib", targets: ["SingleTarget"])]
         )
 
-        let project = converter.convert(
+        let project = try converter.convert(
             package: package,
             packagePath: URL(fileURLWithPath: "/path/to/ConsumerPackage/Package.swift"),
             collector: collector,

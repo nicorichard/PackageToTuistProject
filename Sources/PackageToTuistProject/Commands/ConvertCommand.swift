@@ -217,7 +217,7 @@ struct ConvertCommand {
             )
 
             // Convert
-            let project = converter.convert(
+            let project = try converter.convert(
                 package: description,
                 packagePath: packagePath,
                 collector: packageCollector,

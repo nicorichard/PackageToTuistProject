@@ -1,5 +1,19 @@
 import Foundation
 
+/// Errors that can occur during package conversion
+enum PackageConversionError: Error, CustomStringConvertible {
+    case unresolvableProductDependency(product: String, package: String, matchedIdentity: String)
+
+    var description: String {
+        switch self {
+        case .unresolvableProductDependency(let product, let package, let matchedIdentity):
+            return "Cannot resolve targets for product '\(product)' in package '\(package)'. " +
+                   "The dependency matched local package '\(matchedIdentity)' but no targets could be found. " +
+                   "Ensure the product name in your Package.swift dependency matches an actual product in the target package."
+        }
+    }
+}
+
 /// Converts SPM package descriptions to Tuist project representations
 struct PackageConverter {
     let bundleIdPrefix: String
@@ -22,7 +36,7 @@ struct PackageConverter {
         packagePath: URL,
         collector: DependencyCollector,
         allDescriptions: [String: PackageDescription]
-    ) -> TuistProject {
+    ) throws -> TuistProject {
         let packageDir = packagePath.deletingLastPathComponent()
 
         // Determine destinations from platforms
@@ -39,7 +53,7 @@ struct PackageConverter {
                 continue
             }
 
-            let tuistTarget = convertTarget(
+            let tuistTarget = try convertTarget(
                 target: target,
                 package: package,
                 packagePath: packagePath,
@@ -64,7 +78,7 @@ struct PackageConverter {
         collector: DependencyCollector,
         allDescriptions: [String: PackageDescription],
         destinations: String
-    ) -> TuistTarget {
+    ) throws -> TuistTarget {
         // Determine product type
         let productType: TuistTarget.ProductType
         if target.type == "test" {
@@ -92,7 +106,7 @@ struct PackageConverter {
         // Add product dependencies (external or other packages)
         if let productDeps = target.productDependencies {
             for productName in productDeps {
-                let deps = classifyProductDependency(
+                let deps = try classifyProductDependency(
                     productName: productName,
                     package: package,
                     packagePath: packagePath,
@@ -128,7 +142,7 @@ struct PackageConverter {
         package: PackageDescription,
         packagePath: URL,
         collector: DependencyCollector
-    ) -> [TuistDependency] {
+    ) throws -> [TuistDependency] {
         // Check if there's a known product-to-targets mapping (local package)
         if let targets = collector.targets(forProduct: productName),
            let packageIdentity = collector.packageIdentity(forProduct: productName),
@@ -155,11 +169,19 @@ struct PackageConverter {
                             productLower.contains(identityLower) ||
                             identityLower.contains(productLower)
                         {
-                            // Check if we know the targets for this product
+                            // First try direct product lookup
                             if let targets = collector.targets(forProduct: productName), !targets.isEmpty {
                                 return targets.map { .project(path: localPath, target: $0) }
                             }
-                            return [.project(path: localPath, target: productName)]
+                            // Fall back to all targets from this package
+                            if let targets = collector.allTargets(forPackage: identity), !targets.isEmpty {
+                                return targets.map { .project(path: localPath, target: $0) }
+                            }
+                            throw PackageConversionError.unresolvableProductDependency(
+                                product: productName,
+                                package: package.name,
+                                matchedIdentity: identity
+                            )
                         }
                     }
                 }
@@ -167,10 +189,19 @@ struct PackageConverter {
 
             // Check if it might match another local package
             if let localPath = collector.localPackagePath(for: productName) {
+                // First try direct product lookup
                 if let targets = collector.targets(forProduct: productName), !targets.isEmpty {
                     return targets.map { .project(path: localPath, target: $0) }
                 }
-                return [.project(path: localPath, target: productName)]
+                // Fall back to all targets from this package
+                if let targets = collector.allTargets(forPackage: productName), !targets.isEmpty {
+                    return targets.map { .project(path: localPath, target: $0) }
+                }
+                throw PackageConversionError.unresolvableProductDependency(
+                    product: productName,
+                    package: package.name,
+                    matchedIdentity: productName
+                )
             }
         }
 

@@ -14,6 +14,9 @@ struct DependencyCollector {
     /// Map of product name to the targets it contains
     private var productToTargets: [String: [String]] = [:]
 
+    /// Map of package identity to its product names
+    private var packageToProducts: [String: [String]] = [:]
+
     /// Register a local package and its products
     mutating func registerLocalPackage(
         identity: String,
@@ -21,6 +24,7 @@ struct DependencyCollector {
         products: [(name: String, targets: [String])]
     ) {
         localPackages[identity.lowercased()] = relativePath
+        packageToProducts[identity.lowercased()] = products.map { $0.name }
         for product in products {
             productToPackage[product.name] = identity
             productToTargets[product.name] = product.targets
@@ -54,6 +58,27 @@ struct DependencyCollector {
     /// Get the targets that a product contains
     func targets(forProduct product: String) -> [String]? {
         return productToTargets[product]
+    }
+
+    /// Get all product names for a package identity
+    func products(forPackage identity: String) -> [String]? {
+        return packageToProducts[identity.lowercased()]
+    }
+
+    /// Get all targets for all products in a package
+    func allTargets(forPackage identity: String) -> [String]? {
+        guard let productNames = packageToProducts[identity.lowercased()] else {
+            return nil
+        }
+        var allTargets: [String] = []
+        for productName in productNames {
+            if let targets = productToTargets[productName] {
+                for target in targets where !allTargets.contains(target) {
+                    allTargets.append(target)
+                }
+            }
+        }
+        return allTargets.isEmpty ? nil : allTargets
     }
 
     /// Get all collected external dependencies
