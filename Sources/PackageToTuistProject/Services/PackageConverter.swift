@@ -133,7 +133,8 @@ struct PackageConverter {
             bundleId: bundleId,
             buildableFolders: buildableFolders,
             dependencies: uniqueDependencies,
-            destinations: destinations
+            destinations: destinations,
+            packageName: package.name
         )
     }
 

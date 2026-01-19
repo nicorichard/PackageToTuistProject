@@ -54,6 +54,9 @@ struct ProjectWriter {
             code += "            ]"
         }
 
+        // Add settings with -package-name flag for package access level support
+        code += ",\n            settings: .settings(base: [\"OTHER_SWIFT_FLAGS\": [\"-package-name\", \"\(target.packageName)\"]])"
+
         code += "\n        )"
 
         return code
