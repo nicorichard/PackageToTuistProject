@@ -11,6 +11,9 @@ struct ProjectWriter {
 
         let project = Project(
             name: "\(project.name)",
+            options: .options(
+                disableSynthesizedResourceAccessors: true
+            ),
             targets: [
 
         """
