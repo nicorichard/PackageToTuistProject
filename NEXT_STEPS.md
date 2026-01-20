@@ -1,0 +1,1 @@
+We are in need of a system that allows us to add "ENABLE_TESTING_SEARCH_PATHS" : "YES" to the appropriate projects.
