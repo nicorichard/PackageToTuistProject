@@ -1478,7 +1478,9 @@ struct ProjectWriterTests {
                     bundleId: "com.example.MyTarget",
                     buildableFolders: ["Sources/MyTarget"],
                     dependencies: [],
-                    destinations: ".iOS"
+                    destinations: ".iOS",
+                    deploymentTargets: nil,
+                    packageName: "MyProject"
                 )
             ]
         )
@@ -1504,7 +1506,9 @@ struct ProjectWriterTests {
                     bundleId: "com.example.MyTarget",
                     buildableFolders: ["Sources/MyTarget"],
                     dependencies: [],
-                    destinations: ".macOS"
+                    destinations: ".macOS",
+                    deploymentTargets: nil,
+                    packageName: "MyProject"
                 )
             ]
         )
@@ -1535,7 +1539,9 @@ struct ProjectWriterTests {
                         .external(name: "Alamofire"),
                         .project(path: "../Other", target: "OtherLib")
                     ],
-                    destinations: ".iOS"
+                    destinations: ".iOS",
+                    deploymentTargets: nil,
+                    packageName: "MyProject"
                 )
             ]
         )
@@ -1561,7 +1567,9 @@ struct ProjectWriterTests {
                     bundleId: "com.example.Target1",
                     buildableFolders: ["Sources/Target1"],
                     dependencies: [],
-                    destinations: ".iOS"
+                    destinations: ".iOS",
+                    deploymentTargets: nil,
+                    packageName: "MyProject"
                 ),
                 TuistTarget(
                     name: "Target2",
@@ -1569,7 +1577,9 @@ struct ProjectWriterTests {
                     bundleId: "com.example.Target2",
                     buildableFolders: ["Sources/Target2"],
                     dependencies: [],
-                    destinations: ".iOS"
+                    destinations: ".iOS",
+                    deploymentTargets: nil,
+                    packageName: "MyProject"
                 )
             ]
         )
@@ -1595,7 +1605,9 @@ struct ProjectWriterTests {
                     bundleId: "com.example.MyTarget",
                     buildableFolders: ["Sources/MyTarget"],
                     dependencies: [],
-                    destinations: ".iOS"
+                    destinations: ".iOS",
+                    deploymentTargets: nil,
+                    packageName: "MyProject"
                 )
             ]
         )
