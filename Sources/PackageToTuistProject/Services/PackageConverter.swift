@@ -3,6 +3,7 @@ import Foundation
 /// Errors that can occur during package conversion
 enum PackageConversionError: Error, CustomStringConvertible {
     case unresolvableProductDependency(product: String, package: String, matchedIdentity: String)
+    case missingPlatforms(package: String)
 
     var description: String {
         switch self {
@@ -10,6 +11,23 @@ enum PackageConversionError: Error, CustomStringConvertible {
             return "Cannot resolve targets for product '\(product)' in package '\(package)'. " +
                    "The dependency matched local package '\(matchedIdentity)' but no targets could be found. " +
                    "Ensure the product name in your Package.swift dependency matches an actual product in the target package."
+        case .missingPlatforms(let package):
+            return """
+                Package '\(package)' does not specify any platforms.
+
+                Tuist requires explicit deployment targets, so packages must declare their supported platforms.
+
+                Add a platforms declaration to your Package.swift, for example:
+
+                    let package = Package(
+                        name: "\(package)",
+                        platforms: [
+                            .iOS(.v15),
+                            .macOS(.v12)
+                        ],
+                        ...
+                    )
+                """
         }
     }
 }
@@ -37,11 +55,16 @@ struct PackageConverter {
         collector: DependencyCollector,
         allDescriptions: [String: PackageDescription]
     ) throws -> TuistProject {
+        // Validate that platforms are specified
+        guard let platforms = package.platforms, !platforms.isEmpty else {
+            throw PackageConversionError.missingPlatforms(package: package.name)
+        }
+
         let packageDir = packagePath.deletingLastPathComponent()
 
         // Determine destinations and deployment targets from platforms
-        let destinations = determineDestinations(from: package.platforms)
-        let deploymentTargets = determineDeploymentTargets(from: package.platforms)
+        let destinations = determineDestinations(from: platforms)
+        let deploymentTargets = determineDeploymentTargets(from: platforms)
 
         // Collect binary target names for dependency resolution
         let binaryTargetNames = Set(package.targets.filter { $0.type == "binary" }.map { $0.name })
@@ -242,11 +265,7 @@ struct PackageConverter {
         return [.external(name: productName)]
     }
 
-    private func determineDestinations(from platforms: [PackageDescription.Platform]?) -> String {
-        guard let platforms = platforms, !platforms.isEmpty else {
-            return ".iOS" // Default to iOS if no platforms specified
-        }
-
+    private func determineDestinations(from platforms: [PackageDescription.Platform]) -> String {
         // Convert all platforms to Tuist destination format
         let destinations = platforms.compactMap { platform -> String? in
             switch platform.name.lowercased() {
@@ -265,10 +284,6 @@ struct PackageConverter {
             }
         }
 
-        guard !destinations.isEmpty else {
-            return ".iOS"
-        }
-
         // Single destination: .iOS
         // Multiple destinations: Destinations([Destinations.iOS, .macOS].flatMap { $0 })
         if destinations.count == 1 {
@@ -278,11 +293,7 @@ struct PackageConverter {
         return "Destinations([\(list)].flatMap { $0 })"
     }
 
-    private func determineDeploymentTargets(from platforms: [PackageDescription.Platform]?) -> String? {
-        guard let platforms = platforms, !platforms.isEmpty else {
-            return nil
-        }
-
+    private func determineDeploymentTargets(from platforms: [PackageDescription.Platform]) -> String? {
         // Collect versions by platform
         var versions: [String: String] = [:]
         for platform in platforms {

@@ -942,6 +942,7 @@ struct PackageConverterTests {
         {
             "name": "MyPackage",
             "path": "/path/to/MyPackage",
+            "platforms": [{"name": "ios", "version": "15.0"}],
             "products": [{"name": "MyPackage", "targets": ["MyTarget"], "type": {"library": ["automatic"]}}],
             "targets": [
                 {
@@ -984,6 +985,7 @@ struct PackageConverterTests {
         {
             "name": "MyPackage",
             "path": "/path/to/MyPackage",
+            "platforms": [{"name": "ios", "version": "15.0"}],
             "products": [],
             "targets": [
                 {"name": "MyLib", "type": "library", "path": "Sources/MyLib"},
@@ -1020,6 +1022,7 @@ struct PackageConverterTests {
         {
             "name": "MyPackage",
             "path": "/path/to/MyPackage",
+            "platforms": [{"name": "ios", "version": "15.0"}],
             "products": [],
             "targets": [
                 {"name": "MyLibTests", "type": "test", "path": "Tests/MyLibTests"}
@@ -1043,8 +1046,8 @@ struct PackageConverterTests {
         #expect(project.targets[0].product == .unitTests)
     }
 
-    @Test("uses iOS destination by default")
-    func defaultsToiOS() throws {
+    @Test("throws error when platforms is nil")
+    func throwsOnMissingPlatforms() throws {
         let converter = PackageConverter(
             bundleIdPrefix: "com.example",
             productType: "staticFramework"
@@ -1067,14 +1070,60 @@ struct PackageConverterTests {
         )
 
         let collector = DependencyCollector()
-        let project = try converter.convert(
-            package: package,
-            packagePath: URL(fileURLWithPath: "/path/to/Package.swift"),
-            collector: collector,
-            allDescriptions: [:]
+        #expect(throws: PackageConversionError.self) {
+            _ = try converter.convert(
+                package: package,
+                packagePath: URL(fileURLWithPath: "/path/to/Package.swift"),
+                collector: collector,
+                allDescriptions: [:]
+            )
+        }
+    }
+
+    @Test("throws error when platforms is empty array")
+    func throwsOnEmptyPlatforms() throws {
+        let converter = PackageConverter(
+            bundleIdPrefix: "com.example",
+            productType: "staticFramework"
         )
 
-        #expect(project.targets[0].destinations == ".iOS")
+        let packageJSON = """
+        {
+            "name": "MyPackage",
+            "path": "/path/to/MyPackage",
+            "platforms": [],
+            "products": [],
+            "targets": [
+                {"name": "MyTarget", "type": "library", "path": "Sources/MyTarget"}
+            ]
+        }
+        """
+
+        let package = try! JSONDecoder().decode(
+            PackageDescription.self,
+            from: packageJSON.data(using: .utf8)!
+        )
+
+        let collector = DependencyCollector()
+        #expect(throws: PackageConversionError.self) {
+            _ = try converter.convert(
+                package: package,
+                packagePath: URL(fileURLWithPath: "/path/to/Package.swift"),
+                collector: collector,
+                allDescriptions: [:]
+            )
+        }
+    }
+
+    @Test("error message contains package name and guidance")
+    func errorMessageIsHelpful() throws {
+        let error = PackageConversionError.missingPlatforms(package: "TestPackage")
+        let description = error.description
+
+        #expect(description.contains("TestPackage"))
+        #expect(description.contains("platforms"))
+        #expect(description.contains(".iOS"))
+        #expect(description.contains(".macOS"))
     }
 
     @Test("uses correct destination for macOS platform")
@@ -1123,6 +1172,7 @@ struct PackageConverterTests {
         {
             "name": "MyPackage",
             "path": "/path/to/MyPackage",
+            "platforms": [{"name": "ios", "version": "15.0"}],
             "products": [],
             "targets": [
                 {"name": "TargetA", "type": "library", "path": "Sources/TargetA"},
@@ -1160,6 +1210,7 @@ struct PackageConverterTests {
         {
             "name": "MyPackage",
             "path": "/path/to/MyPackage",
+            "platforms": [{"name": "ios", "version": "15.0"}],
             "products": [],
             "targets": [
                 {"name": "MyTarget", "type": "library", "path": "Sources/MyTarget", "product_dependencies": ["Alamofire"]}
@@ -1203,6 +1254,7 @@ struct PackageConverterTests {
         {
             "name": "MyPackage",
             "path": "/path/to/MyPackage",
+            "platforms": [{"name": "ios", "version": "15.0"}],
             "products": [],
             "targets": [
                 {"name": "MyTarget", "type": "library", "path": "Sources/MyTarget"}
@@ -1245,6 +1297,7 @@ struct PackageConverterTests {
         {
             "name": "ConsumerPackage",
             "path": "/path/to/ConsumerPackage",
+            "platforms": [{"name": "ios", "version": "15.0"}],
             "products": [],
             "targets": [
                 {
@@ -1298,6 +1351,7 @@ struct PackageConverterTests {
         {
             "name": "ConsumerPackage",
             "path": "/path/to/ConsumerPackage",
+            "platforms": [{"name": "ios", "version": "15.0"}],
             "products": [],
             "targets": [
                 {
@@ -1359,6 +1413,7 @@ struct PackageConverterTests {
         {
             "name": "ConsumerPackage",
             "path": "/path/to/ConsumerPackage",
+            "platforms": [{"name": "ios", "version": "15.0"}],
             "products": [],
             "targets": [
                 {
@@ -1421,6 +1476,7 @@ struct PackageConverterTests {
         {
             "name": "ConsumerPackage",
             "path": "/path/to/ConsumerPackage",
+            "platforms": [{"name": "ios", "version": "15.0"}],
             "products": [],
             "targets": [
                 {
