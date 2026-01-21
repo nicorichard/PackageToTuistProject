@@ -17,6 +17,9 @@ struct TuistTarget {
     let destinations: String
     let deploymentTargets: String?
     let packageName: String
+    /// Whether this target needs ENABLE_TESTING_SEARCH_PATHS=YES
+    /// True for test targets or targets that import XCTest/Testing/StoreKitTest
+    let needsTestingSearchPaths: Bool
 
     enum ProductType: String {
         case staticFramework

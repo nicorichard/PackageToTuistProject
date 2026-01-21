@@ -64,7 +64,14 @@ struct ProjectWriter {
 
         // Add settings with -package-name flag for package access level support
         // and STRING_CATALOG_GENERATE_SYMBOLS which is the default for Swift packages
-        code += ",\n            settings: .settings(base: [\"OTHER_SWIFT_FLAGS\": [\"-package-name\", \"\(target.packageName)\"], \"STRING_CATALOG_GENERATE_SYMBOLS\": \"YES\"])"
+        var settingsPairs: [String] = [
+            "\"OTHER_SWIFT_FLAGS\": [\"-package-name\", \"\(target.packageName)\"]",
+            "\"STRING_CATALOG_GENERATE_SYMBOLS\": \"YES\""
+        ]
+        if target.needsTestingSearchPaths {
+            settingsPairs.append("\"ENABLE_TESTING_SEARCH_PATHS\": \"YES\"")
+        }
+        code += ",\n            settings: .settings(base: [\(settingsPairs.joined(separator: ", "))])"
 
         code += "\n        )"
 

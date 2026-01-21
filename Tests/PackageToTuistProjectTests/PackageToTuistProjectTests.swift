@@ -1480,7 +1480,8 @@ struct ProjectWriterTests {
                     dependencies: [],
                     destinations: ".iOS",
                     deploymentTargets: nil,
-                    packageName: "MyProject"
+                    packageName: "MyProject",
+                    needsTestingSearchPaths: false
                 )
             ]
         )
@@ -1508,7 +1509,8 @@ struct ProjectWriterTests {
                     dependencies: [],
                     destinations: ".macOS",
                     deploymentTargets: nil,
-                    packageName: "MyProject"
+                    packageName: "MyProject",
+                    needsTestingSearchPaths: false
                 )
             ]
         )
@@ -1541,7 +1543,8 @@ struct ProjectWriterTests {
                     ],
                     destinations: ".iOS",
                     deploymentTargets: nil,
-                    packageName: "MyProject"
+                    packageName: "MyProject",
+                    needsTestingSearchPaths: false
                 )
             ]
         )
@@ -1569,7 +1572,8 @@ struct ProjectWriterTests {
                     dependencies: [],
                     destinations: ".iOS",
                     deploymentTargets: nil,
-                    packageName: "MyProject"
+                    packageName: "MyProject",
+                    needsTestingSearchPaths: false
                 ),
                 TuistTarget(
                     name: "Target2",
@@ -1579,7 +1583,8 @@ struct ProjectWriterTests {
                     dependencies: [],
                     destinations: ".iOS",
                     deploymentTargets: nil,
-                    packageName: "MyProject"
+                    packageName: "MyProject",
+                    needsTestingSearchPaths: false
                 )
             ]
         )
@@ -1607,7 +1612,8 @@ struct ProjectWriterTests {
                     dependencies: [],
                     destinations: ".iOS",
                     deploymentTargets: nil,
-                    packageName: "MyProject"
+                    packageName: "MyProject",
+                    needsTestingSearchPaths: false
                 )
             ]
         )
@@ -1616,6 +1622,58 @@ struct ProjectWriterTests {
 
         // Should NOT contain dependencies key when empty
         #expect(!output.contains("dependencies:"))
+    }
+
+    @Test("includes ENABLE_TESTING_SEARCH_PATHS when needsTestingSearchPaths is true")
+    func includesTestingSearchPathsSetting() {
+        let writer = ProjectWriter()
+        let project = TuistProject(
+            name: "MyProject",
+            path: "/path/to/project",
+            targets: [
+                TuistTarget(
+                    name: "TestHelpers",
+                    product: .staticFramework,
+                    bundleId: "com.example.TestHelpers",
+                    buildableFolders: ["Sources/TestHelpers"],
+                    dependencies: [],
+                    destinations: ".iOS",
+                    deploymentTargets: nil,
+                    packageName: "MyProject",
+                    needsTestingSearchPaths: true
+                )
+            ]
+        )
+
+        let output = writer.generate(project: project)
+
+        #expect(output.contains("\"ENABLE_TESTING_SEARCH_PATHS\": \"YES\""))
+    }
+
+    @Test("omits ENABLE_TESTING_SEARCH_PATHS when needsTestingSearchPaths is false")
+    func omitsTestingSearchPathsSetting() {
+        let writer = ProjectWriter()
+        let project = TuistProject(
+            name: "MyProject",
+            path: "/path/to/project",
+            targets: [
+                TuistTarget(
+                    name: "RegularTarget",
+                    product: .staticFramework,
+                    bundleId: "com.example.RegularTarget",
+                    buildableFolders: ["Sources/RegularTarget"],
+                    dependencies: [],
+                    destinations: ".iOS",
+                    deploymentTargets: nil,
+                    packageName: "MyProject",
+                    needsTestingSearchPaths: false
+                )
+            ]
+        )
+
+        let output = writer.generate(project: project)
+
+        #expect(!output.contains("ENABLE_TESTING_SEARCH_PATHS"))
     }
 }
 
@@ -1725,6 +1783,141 @@ struct PackageScannerTests {
         let packages = try scanner.findPackages()
 
         #expect(packages.isEmpty)
+    }
+}
+
+// MARK: - ImportScanner Tests
+
+@Suite("ImportScanner")
+struct ImportScannerTests {
+    @Test("detects import XCTest")
+    func detectsXCTestImport() {
+        let scanner = ImportScanner()
+        let content = """
+        import Foundation
+        import XCTest
+
+        class MyTests: XCTestCase {}
+        """
+
+        #expect(scanner.containsTestingImport(fileContent: content) == true)
+    }
+
+    @Test("detects import Testing")
+    func detectsTestingImport() {
+        let scanner = ImportScanner()
+        let content = """
+        import Foundation
+        import Testing
+
+        @Suite struct MyTests {}
+        """
+
+        #expect(scanner.containsTestingImport(fileContent: content) == true)
+    }
+
+    @Test("detects import StoreKitTest")
+    func detectsStoreKitTestImport() {
+        let scanner = ImportScanner()
+        let content = """
+        import StoreKit
+        import StoreKitTest
+
+        class StoreTests {}
+        """
+
+        #expect(scanner.containsTestingImport(fileContent: content) == true)
+    }
+
+    @Test("ignores single-line commented imports")
+    func ignoresSingleLineCommentedImports() {
+        let scanner = ImportScanner()
+        let content = """
+        import Foundation
+        // import XCTest
+        // import Testing
+
+        class NotATest {}
+        """
+
+        #expect(scanner.containsTestingImport(fileContent: content) == false)
+    }
+
+    @Test("ignores block commented imports")
+    func ignoresBlockCommentedImports() {
+        let scanner = ImportScanner()
+        let content = """
+        import Foundation
+        /* import XCTest */
+        /*
+        import Testing
+        */
+
+        class NotATest {}
+        """
+
+        #expect(scanner.containsTestingImport(fileContent: content) == false)
+    }
+
+    @Test("returns false when no testing imports present")
+    func noTestingImports() {
+        let scanner = ImportScanner()
+        let content = """
+        import Foundation
+        import UIKit
+
+        class MyView: UIView {}
+        """
+
+        #expect(scanner.containsTestingImport(fileContent: content) == false)
+    }
+
+    @Test("handles empty file")
+    func handlesEmptyFile() {
+        let scanner = ImportScanner()
+        #expect(scanner.containsTestingImport(fileContent: "") == false)
+    }
+
+    @Test("handles file with only whitespace and comments")
+    func handlesWhitespaceOnlyFile() {
+        let scanner = ImportScanner()
+        let content = """
+        // This is a comment
+        /* Another comment */
+
+        """
+
+        #expect(scanner.containsTestingImport(fileContent: content) == false)
+    }
+
+    @Test("detects import even with leading whitespace")
+    func detectsImportWithLeadingWhitespace() {
+        let scanner = ImportScanner()
+        let content = """
+        import Foundation
+            import XCTest
+
+        class MyTests {}
+        """
+
+        #expect(scanner.containsTestingImport(fileContent: content) == true)
+    }
+
+    @Test("does not match partial framework names")
+    func doesNotMatchPartialNames() {
+        let scanner = ImportScanner()
+        let content = """
+        import Foundation
+        import XCTestExtensions
+        import MyTesting
+        import StoreKitTestHelper
+
+        class MyClass {}
+        """
+
+        // These should not match because the import is for a different module
+        // that happens to contain the framework name
+        #expect(scanner.containsTestingImport(fileContent: content) == false)
     }
 }
 
