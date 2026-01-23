@@ -48,7 +48,8 @@ struct ProjectWriter {
             code += "\n            deploymentTargets: \(deploymentTargets),"
         }
 
-        code += "\n            buildableFolders: [\(target.buildableFolders.map { "\"\($0)\"" }.joined(separator: ", "))]"
+        code += ",\n            sources: [\"\(target.sourcesPath)/**\"]"
+        code += ",\n            resources: [\"\(target.sourcesPath)/Resources/**\"]"
 
         if !target.dependencies.isEmpty {
             code += ",\n            dependencies: [\n"
@@ -66,7 +67,9 @@ struct ProjectWriter {
         // and STRING_CATALOG_GENERATE_SYMBOLS which is the default for Swift packages
         var settingsPairs: [String] = [
             "\"OTHER_SWIFT_FLAGS\": [\"-package-name\", \"\(target.packageName)\"]",
-            "\"STRING_CATALOG_GENERATE_SYMBOLS\": \"YES\""
+            "\"STRING_CATALOG_GENERATE_SYMBOLS\": \"YES\"",
+            "\"SWIFT_PACKAGE_NAME\": \"\(target.packageName)\"",
+            "\"SWIFT_ACTIVE_COMPILATION_CONDITIONS\": \"$(inherited) SWIFT_PACKAGE\""
         ]
         if target.needsTestingSearchPaths {
             settingsPairs.append("\"ENABLE_TESTING_SEARCH_PATHS\": \"YES\"")

@@ -138,8 +138,8 @@ struct PackageConverter {
         // Build bundle ID
         let bundleId = "\(bundleIdPrefix).\(target.name)"
 
-        // Buildable folders - the target's source path
-        let buildableFolders = [target.path]
+        // Sources path - the target's source path
+        let sourcesPath = target.path
 
         // Convert dependencies
         var dependencies: [TuistDependency] = []
@@ -184,7 +184,7 @@ struct PackageConverter {
             name: target.name,
             product: productType,
             bundleId: bundleId,
-            buildableFolders: buildableFolders,
+            sourcesPath: sourcesPath,
             dependencies: uniqueDependencies,
             destinations: destinations,
             deploymentTargets: deploymentTargets,

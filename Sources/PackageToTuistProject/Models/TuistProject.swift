@@ -12,7 +12,7 @@ struct TuistTarget {
     let name: String
     let product: ProductType
     let bundleId: String
-    let buildableFolders: [String]
+    let sourcesPath: String
     let dependencies: [TuistDependency]
     let destinations: String
     let deploymentTargets: String?

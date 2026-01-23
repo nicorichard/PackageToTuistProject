@@ -1532,7 +1532,7 @@ struct ProjectWriterTests {
                     name: "MyTarget",
                     product: .staticFramework,
                     bundleId: "com.example.MyTarget",
-                    buildableFolders: ["Sources/MyTarget"],
+                    sourcesPath: "Sources/MyTarget",
                     dependencies: [],
                     destinations: ".iOS",
                     deploymentTargets: nil,
@@ -1561,7 +1561,7 @@ struct ProjectWriterTests {
                     name: "MyTarget",
                     product: .framework,
                     bundleId: "com.example.MyTarget",
-                    buildableFolders: ["Sources/MyTarget"],
+                    sourcesPath: "Sources/MyTarget",
                     dependencies: [],
                     destinations: ".macOS",
                     deploymentTargets: nil,
@@ -1577,7 +1577,8 @@ struct ProjectWriterTests {
         #expect(output.contains("destinations: .macOS"))
         #expect(output.contains("product: .framework"))
         #expect(output.contains("bundleId: \"com.example.MyTarget\""))
-        #expect(output.contains("buildableFolders: [\"Sources/MyTarget\"]"))
+        #expect(output.contains("sources: [\"Sources/MyTarget/**\"]"))
+        #expect(output.contains("resources: [\"Sources/MyTarget/Resources/**\"]"))
     }
 
     @Test("generates target with dependencies")
@@ -1591,7 +1592,7 @@ struct ProjectWriterTests {
                     name: "MyTarget",
                     product: .staticFramework,
                     bundleId: "com.example.MyTarget",
-                    buildableFolders: ["Sources/MyTarget"],
+                    sourcesPath: "Sources/MyTarget",
                     dependencies: [
                         .target(name: "OtherTarget"),
                         .external(name: "Alamofire"),
@@ -1624,7 +1625,7 @@ struct ProjectWriterTests {
                     name: "Target1",
                     product: .staticFramework,
                     bundleId: "com.example.Target1",
-                    buildableFolders: ["Sources/Target1"],
+                    sourcesPath: "Sources/Target1",
                     dependencies: [],
                     destinations: ".iOS",
                     deploymentTargets: nil,
@@ -1635,7 +1636,7 @@ struct ProjectWriterTests {
                     name: "Target2",
                     product: .staticFramework,
                     bundleId: "com.example.Target2",
-                    buildableFolders: ["Sources/Target2"],
+                    sourcesPath: "Sources/Target2",
                     dependencies: [],
                     destinations: ".iOS",
                     deploymentTargets: nil,
@@ -1664,7 +1665,7 @@ struct ProjectWriterTests {
                     name: "MyTarget",
                     product: .staticFramework,
                     bundleId: "com.example.MyTarget",
-                    buildableFolders: ["Sources/MyTarget"],
+                    sourcesPath: "Sources/MyTarget",
                     dependencies: [],
                     destinations: ".iOS",
                     deploymentTargets: nil,
@@ -1691,7 +1692,7 @@ struct ProjectWriterTests {
                     name: "TestHelpers",
                     product: .staticFramework,
                     bundleId: "com.example.TestHelpers",
-                    buildableFolders: ["Sources/TestHelpers"],
+                    sourcesPath: "Sources/TestHelpers",
                     dependencies: [],
                     destinations: ".iOS",
                     deploymentTargets: nil,
@@ -1717,7 +1718,7 @@ struct ProjectWriterTests {
                     name: "RegularTarget",
                     product: .staticFramework,
                     bundleId: "com.example.RegularTarget",
-                    buildableFolders: ["Sources/RegularTarget"],
+                    sourcesPath: "Sources/RegularTarget",
                     dependencies: [],
                     destinations: ".iOS",
                     deploymentTargets: nil,
