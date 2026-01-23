@@ -1578,7 +1578,15 @@ struct ProjectWriterTests {
         #expect(output.contains("product: .framework"))
         #expect(output.contains("bundleId: \"com.example.MyTarget\""))
         #expect(output.contains("sources: [\"Sources/MyTarget/**\"]"))
-        #expect(output.contains("resources: [\"Sources/MyTarget/Resources/**\"]"))
+        // Check that SPM resource patterns are included
+        #expect(output.contains("Sources/MyTarget/**/*.xcassets"))
+        #expect(output.contains("Sources/MyTarget/**/*.xib"))
+        #expect(output.contains("Sources/MyTarget/**/*.storyboard"))
+        #expect(output.contains("Sources/MyTarget/**/*.xcdatamodeld"))
+        #expect(output.contains("Sources/MyTarget/**/*.xcmappingmodel"))
+        #expect(output.contains("Sources/MyTarget/**/*.lproj/**"))
+        #expect(output.contains("Sources/MyTarget/**/*.metal"))
+        #expect(output.contains("Sources/MyTarget/Resources/**"))
     }
 
     @Test("generates target with dependencies")
@@ -1731,6 +1739,228 @@ struct ProjectWriterTests {
         let output = writer.generate(project: project)
 
         #expect(!output.contains("ENABLE_TESTING_SEARCH_PATHS"))
+    }
+
+    // MARK: - Comma Edge Case Tests
+
+    @Test("target with no dependencies has valid comma placement")
+    func noDependenciesValidCommas() {
+        let writer = ProjectWriter()
+        let project = TuistProject(
+            name: "MyProject",
+            path: "/path/to/project",
+            targets: [
+                TuistTarget(
+                    name: "MyTarget",
+                    product: .staticFramework,
+                    bundleId: "com.example.MyTarget",
+                    sourcesPath: "Sources/MyTarget",
+                    dependencies: [],
+                    destinations: ".iOS",
+                    deploymentTargets: nil,
+                    packageName: "MyProject",
+                    needsTestingSearchPaths: false
+                )
+            ]
+        )
+
+        let output = writer.generate(project: project)
+
+        // Should not have double commas
+        #expect(!output.contains(",,"))
+        // Should not have missing commas before settings (check for valid pattern)
+        #expect(output.contains("resources:"))
+        #expect(output.contains("settings:"))
+    }
+
+    @Test("target with one dependency has valid comma placement")
+    func oneDependencyValidCommas() {
+        let writer = ProjectWriter()
+        let project = TuistProject(
+            name: "MyProject",
+            path: "/path/to/project",
+            targets: [
+                TuistTarget(
+                    name: "MyTarget",
+                    product: .staticFramework,
+                    bundleId: "com.example.MyTarget",
+                    sourcesPath: "Sources/MyTarget",
+                    dependencies: [.target(name: "OtherTarget")],
+                    destinations: ".iOS",
+                    deploymentTargets: nil,
+                    packageName: "MyProject",
+                    needsTestingSearchPaths: false
+                )
+            ]
+        )
+
+        let output = writer.generate(project: project)
+
+        // Should not have double commas
+        #expect(!output.contains(",,"))
+        // Check resources and dependencies are both present
+        #expect(output.contains("resources:"))
+        #expect(output.contains("dependencies:"))
+        #expect(output.contains("settings:"))
+    }
+
+    @Test("target with deploymentTargets has valid comma placement")
+    func withDeploymentTargetsValidCommas() {
+        let writer = ProjectWriter()
+        let project = TuistProject(
+            name: "MyProject",
+            path: "/path/to/project",
+            targets: [
+                TuistTarget(
+                    name: "MyTarget",
+                    product: .staticFramework,
+                    bundleId: "com.example.MyTarget",
+                    sourcesPath: "Sources/MyTarget",
+                    dependencies: [],
+                    destinations: ".iOS",
+                    deploymentTargets: ".iOS(\"15.0\")",
+                    packageName: "MyProject",
+                    needsTestingSearchPaths: false
+                )
+            ]
+        )
+
+        let output = writer.generate(project: project)
+
+        // Should not have double commas
+        #expect(!output.contains(",,"))
+        #expect(output.contains("deploymentTargets:"))
+        #expect(output.contains("sources:"))
+    }
+
+    @Test("target without deploymentTargets has valid comma placement")
+    func withoutDeploymentTargetsValidCommas() {
+        let writer = ProjectWriter()
+        let project = TuistProject(
+            name: "MyProject",
+            path: "/path/to/project",
+            targets: [
+                TuistTarget(
+                    name: "MyTarget",
+                    product: .staticFramework,
+                    bundleId: "com.example.MyTarget",
+                    sourcesPath: "Sources/MyTarget",
+                    dependencies: [],
+                    destinations: ".iOS",
+                    deploymentTargets: nil,
+                    packageName: "MyProject",
+                    needsTestingSearchPaths: false
+                )
+            ]
+        )
+
+        let output = writer.generate(project: project)
+
+        // Should not have double commas
+        #expect(!output.contains(",,"))
+        #expect(!output.contains("deploymentTargets:"))
+        #expect(output.contains("bundleId:"))
+        #expect(output.contains("sources:"))
+    }
+
+    @Test("multiple targets have correct commas between them")
+    func multipleTargetsValidCommas() {
+        let writer = ProjectWriter()
+        let project = TuistProject(
+            name: "MyProject",
+            path: "/path/to/project",
+            targets: [
+                TuistTarget(
+                    name: "Target1",
+                    product: .staticFramework,
+                    bundleId: "com.example.Target1",
+                    sourcesPath: "Sources/Target1",
+                    dependencies: [],
+                    destinations: ".iOS",
+                    deploymentTargets: nil,
+                    packageName: "MyProject",
+                    needsTestingSearchPaths: false
+                ),
+                TuistTarget(
+                    name: "Target2",
+                    product: .staticFramework,
+                    bundleId: "com.example.Target2",
+                    sourcesPath: "Sources/Target2",
+                    dependencies: [.target(name: "Target1")],
+                    destinations: ".iOS",
+                    deploymentTargets: ".iOS(\"15.0\")",
+                    packageName: "MyProject",
+                    needsTestingSearchPaths: true
+                ),
+                TuistTarget(
+                    name: "Target3",
+                    product: .unitTests,
+                    bundleId: "com.example.Target3",
+                    sourcesPath: "Tests/Target3",
+                    dependencies: [.target(name: "Target1"), .external(name: "Quick")],
+                    destinations: ".iOS",
+                    deploymentTargets: nil,
+                    packageName: "MyProject",
+                    needsTestingSearchPaths: true
+                )
+            ]
+        )
+
+        let output = writer.generate(project: project)
+
+        // Should not have double commas
+        #expect(!output.contains(",,"))
+        // Should have all three targets
+        #expect(output.contains("Target1"))
+        #expect(output.contains("Target2"))
+        #expect(output.contains("Target3"))
+        // Comma between closing parenthesis and next target
+        // Count occurrences of ")," which should appear between targets
+        let closingParenCommaCount = output.components(separatedBy: "),").count - 1
+        // Should have at least 2 occurrences (between targets in the array)
+        #expect(closingParenCommaCount >= 2)
+    }
+
+    @Test("generated output has no double commas in any configuration")
+    func noDoubleCommasInAnyConfiguration() {
+        let writer = ProjectWriter()
+
+        // Test various configurations
+        let configurations: [(deps: [TuistDependency], deployment: String?, testing: Bool)] = [
+            ([], nil, false),
+            ([], nil, true),
+            ([], ".iOS(\"15.0\")", false),
+            ([], ".iOS(\"15.0\")", true),
+            ([.target(name: "A")], nil, false),
+            ([.target(name: "A")], nil, true),
+            ([.target(name: "A")], ".iOS(\"15.0\")", false),
+            ([.target(name: "A")], ".iOS(\"15.0\")", true),
+            ([.target(name: "A"), .external(name: "B")], nil, false),
+            ([.target(name: "A"), .external(name: "B")], ".iOS(\"15.0\")", true),
+        ]
+
+        for config in configurations {
+            let project = TuistProject(
+                name: "TestProject",
+                path: "/path",
+                targets: [
+                    TuistTarget(
+                        name: "TestTarget",
+                        product: .staticFramework,
+                        bundleId: "com.test",
+                        sourcesPath: "Sources/Test",
+                        dependencies: config.deps,
+                        destinations: ".iOS",
+                        deploymentTargets: config.deployment,
+                        packageName: "TestProject",
+                        needsTestingSearchPaths: config.testing
+                    )
+                ]
+            )
+
+            let output = writer.generate(project: project)
+            #expect(!output.contains(",,"), "Double comma found in config: deps=\(config.deps.count), deployment=\(config.deployment ?? "nil"), testing=\(config.testing)")
+        }
     }
 }
 
@@ -2022,5 +2252,236 @@ struct ExternalDependencyTests {
         set.insert(dep2)
 
         #expect(set.count == 1)
+    }
+}
+
+// MARK: - Fixture Integration Tests
+
+/// Helper to locate test fixtures
+private func fixturesDirectory() -> URL {
+    // Get the path to the test file, then navigate to Fixtures
+    let testFileURL = URL(fileURLWithPath: #filePath)
+    return testFileURL
+        .deletingLastPathComponent()  // PackageToTuistProjectTests
+        .deletingLastPathComponent()  // Tests
+        .appendingPathComponent("Fixtures")
+}
+
+@Suite("FixtureIntegration")
+struct FixtureIntegrationTests {
+    @Test("loads BasicLibrary fixture")
+    func loadBasicLibrary() async throws {
+        let fixtureURL = fixturesDirectory().appendingPathComponent("BasicLibrary/Package.swift")
+        let scanner = PackageScanner(rootDirectory: fixtureURL.deletingLastPathComponent())
+        let description = try await scanner.loadPackageDescription(at: fixtureURL)
+
+        #expect(description.name == "BasicLibrary")
+        #expect(description.platforms?.count == 1)
+        #expect(description.platforms?[0].name == "ios")
+        #expect(description.platforms?[0].version == "15.0")
+        #expect(description.products.count == 1)
+        #expect(description.products[0].name == "BasicLibrary")
+        #expect(description.products[0].type.library != nil)
+        #expect(description.targets.count == 1)
+        #expect(description.targets[0].name == "BasicLibrary")
+        #expect(description.targets[0].type == "library")
+    }
+
+    @Test("loads MultiTarget fixture with dependencies")
+    func loadMultiTarget() async throws {
+        let fixtureURL = fixturesDirectory().appendingPathComponent("MultiTarget/Package.swift")
+        let scanner = PackageScanner(rootDirectory: fixtureURL.deletingLastPathComponent())
+        let description = try await scanner.loadPackageDescription(at: fixtureURL)
+
+        #expect(description.name == "MultiTarget")
+        #expect(description.products.count == 1)
+        #expect(description.products[0].targets.count == 2)
+        #expect(description.targets.count == 2)
+
+        let coreTarget = description.targets.first { $0.name == "Core" }
+        let featureTarget = description.targets.first { $0.name == "Feature" }
+
+        #expect(coreTarget != nil)
+        #expect(featureTarget != nil)
+        #expect(featureTarget?.targetDependencies == ["Core"])
+    }
+
+    @Test("loads WithDependencies fixture with external dependency")
+    func loadWithDependencies() async throws {
+        let fixtureURL = fixturesDirectory().appendingPathComponent("WithDependencies/Package.swift")
+        let scanner = PackageScanner(rootDirectory: fixtureURL.deletingLastPathComponent())
+        let description = try await scanner.loadPackageDescription(at: fixtureURL)
+
+        #expect(description.name == "WithDependencies")
+        #expect(description.dependencies?.count == 1)
+        #expect(description.dependencies?[0].identity == "swift-argument-parser")
+        #expect(description.dependencies?[0].type == "sourceControl")
+        #expect(description.targets[0].productDependencies == ["ArgumentParser"])
+    }
+
+    @Test("loads WithTestTarget fixture")
+    func loadWithTestTarget() async throws {
+        let fixtureURL = fixturesDirectory().appendingPathComponent("WithTestTarget/Package.swift")
+        let scanner = PackageScanner(rootDirectory: fixtureURL.deletingLastPathComponent())
+        let description = try await scanner.loadPackageDescription(at: fixtureURL)
+
+        #expect(description.name == "WithTestTarget")
+        #expect(description.products.count == 1)
+        #expect(description.targets.count == 2)
+
+        let libTarget = description.targets.first { $0.name == "MyLib" }
+        let testTarget = description.targets.first { $0.name == "MyLibTests" }
+
+        #expect(libTarget?.type == "library")
+        #expect(testTarget?.type == "test")
+        #expect(testTarget?.targetDependencies == ["MyLib"])
+    }
+
+    @Test("loads MultiPlatform fixture with multiple platforms")
+    func loadMultiPlatform() async throws {
+        let fixtureURL = fixturesDirectory().appendingPathComponent("MultiPlatform/Package.swift")
+        let scanner = PackageScanner(rootDirectory: fixtureURL.deletingLastPathComponent())
+        let description = try await scanner.loadPackageDescription(at: fixtureURL)
+
+        #expect(description.name == "MultiPlatform")
+        #expect(description.platforms?.count == 3)
+
+        let platformNames = Set(description.platforms?.map { $0.name } ?? [])
+        #expect(platformNames.contains("ios"))
+        #expect(platformNames.contains("macos"))
+        #expect(platformNames.contains("tvos"))
+    }
+
+    @Test("converts BasicLibrary fixture to Tuist project")
+    func convertBasicLibrary() async throws {
+        let fixtureURL = fixturesDirectory().appendingPathComponent("BasicLibrary/Package.swift")
+        let scanner = PackageScanner(rootDirectory: fixtureURL.deletingLastPathComponent())
+        let description = try await scanner.loadPackageDescription(at: fixtureURL)
+
+        let converter = PackageConverter(
+            bundleIdPrefix: "com.test",
+            productType: "staticFramework"
+        )
+
+        let project = try converter.convert(
+            package: description,
+            packagePath: fixtureURL,
+            collector: DependencyCollector(),
+            allDescriptions: [:]
+        )
+
+        #expect(project.name == "BasicLibrary")
+        #expect(project.targets.count == 1)
+        #expect(project.targets[0].name == "BasicLibrary")
+        #expect(project.targets[0].bundleId == "com.test.BasicLibrary")
+        #expect(project.targets[0].product == .staticFramework)
+        #expect(project.targets[0].destinations == ".iOS")
+    }
+
+    @Test("converts MultiTarget fixture preserving dependencies")
+    func convertMultiTarget() async throws {
+        let fixtureURL = fixturesDirectory().appendingPathComponent("MultiTarget/Package.swift")
+        let scanner = PackageScanner(rootDirectory: fixtureURL.deletingLastPathComponent())
+        let description = try await scanner.loadPackageDescription(at: fixtureURL)
+
+        let converter = PackageConverter(
+            bundleIdPrefix: "com.test",
+            productType: "framework"
+        )
+
+        let project = try converter.convert(
+            package: description,
+            packagePath: fixtureURL,
+            collector: DependencyCollector(),
+            allDescriptions: [:]
+        )
+
+        #expect(project.name == "MultiTarget")
+        #expect(project.targets.count == 2)
+
+        let featureTarget = project.targets.first { $0.name == "Feature" }
+        #expect(featureTarget?.dependencies.count == 1)
+        #expect(featureTarget?.dependencies[0] == .target(name: "Core"))
+    }
+
+    @Test("converts WithTestTarget fixture with test target product type")
+    func convertWithTestTarget() async throws {
+        let fixtureURL = fixturesDirectory().appendingPathComponent("WithTestTarget/Package.swift")
+        let scanner = PackageScanner(rootDirectory: fixtureURL.deletingLastPathComponent())
+        let description = try await scanner.loadPackageDescription(at: fixtureURL)
+
+        let converter = PackageConverter(
+            bundleIdPrefix: "com.test",
+            productType: "staticFramework"
+        )
+
+        let project = try converter.convert(
+            package: description,
+            packagePath: fixtureURL,
+            collector: DependencyCollector(),
+            allDescriptions: [:]
+        )
+
+        #expect(project.name == "WithTestTarget")
+
+        let libTarget = project.targets.first { $0.name == "MyLib" }
+        let testTarget = project.targets.first { $0.name == "MyLibTests" }
+
+        #expect(libTarget?.product == .staticFramework)
+        #expect(testTarget?.product == .unitTests)
+        #expect(testTarget?.dependencies.contains(.target(name: "MyLib")) == true)
+    }
+
+    @Test("converts WithDependencies fixture with external dependencies")
+    func convertWithDependencies() async throws {
+        let fixtureURL = fixturesDirectory().appendingPathComponent("WithDependencies/Package.swift")
+        let scanner = PackageScanner(rootDirectory: fixtureURL.deletingLastPathComponent())
+        let description = try await scanner.loadPackageDescription(at: fixtureURL)
+
+        let converter = PackageConverter(
+            bundleIdPrefix: "com.test",
+            productType: "staticFramework"
+        )
+
+        let project = try converter.convert(
+            package: description,
+            packagePath: fixtureURL,
+            collector: DependencyCollector(),
+            allDescriptions: [:]
+        )
+
+        #expect(project.name == "WithDependencies")
+        #expect(project.targets[0].dependencies.contains(.external(name: "ArgumentParser")) == true)
+    }
+
+    @Test("generates valid Project.swift from BasicLibrary fixture")
+    func generateProjectSwift() async throws {
+        let fixtureURL = fixturesDirectory().appendingPathComponent("BasicLibrary/Package.swift")
+        let scanner = PackageScanner(rootDirectory: fixtureURL.deletingLastPathComponent())
+        let description = try await scanner.loadPackageDescription(at: fixtureURL)
+
+        let converter = PackageConverter(
+            bundleIdPrefix: "com.test",
+            productType: "staticFramework"
+        )
+
+        let project = try converter.convert(
+            package: description,
+            packagePath: fixtureURL,
+            collector: DependencyCollector(),
+            allDescriptions: [:]
+        )
+
+        let writer = ProjectWriter()
+        let output = writer.generate(project: project)
+
+        #expect(output.contains("import ProjectDescription"))
+        #expect(output.contains("let project = Project("))
+        #expect(output.contains("name: \"BasicLibrary\""))
+        #expect(output.contains("name: \"BasicLibrary\""))
+        #expect(output.contains("destinations: .iOS"))
+        #expect(output.contains("product: .staticFramework"))
+        #expect(output.contains("bundleId: \"com.test.BasicLibrary\""))
+        #expect(!output.contains(",,"))  // No double commas
     }
 }
