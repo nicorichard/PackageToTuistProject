@@ -48,8 +48,8 @@ struct ProjectWriter {
             code += "\n            deploymentTargets: \(deploymentTargets),"
         }
 
-        code += ",\n            sources: [\"\(target.sourcesPath)/**\"]"
-        code += ",\n            resources: [\"\(target.sourcesPath)/Resources/**\"]"
+        code += "\n            sources: [\"\(target.sourcesPath)/**\"],"
+        code += "\n            resources: [\"\(target.sourcesPath)/Resources/**\"]"
 
         if !target.dependencies.isEmpty {
             code += ",\n            dependencies: [\n"
