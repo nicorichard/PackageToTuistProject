@@ -11,6 +11,8 @@ struct ProjectWriter {
         "**/*.xcdatamodeld",
         "**/*.xcmappingmodel",
         "**/*.lproj/**",
+        "**/*.strings",
+        "**/*.stringsdict",
         "**/*.metal",
         "Resources/**"  // Fallback for explicit resources folder
     ]
