@@ -1,0 +1,54 @@
+{
+  "dependencies" : [
+
+  ],
+  "manifest_display_name" : "MultiTarget",
+  "name" : "MultiTarget",
+  "path" : "\/Users\/nico\/Projects\/PackageToTuistProject\/Tests\/Fixtures\/MultiTarget",
+  "platforms" : [
+    {
+      "name" : "ios",
+      "version" : "15.0"
+    }
+  ],
+  "products" : [
+    {
+      "name" : "MultiTarget",
+      "targets" : [
+        "Core",
+        "Feature"
+      ],
+      "type" : {
+        "library" : [
+          "automatic"
+        ]
+      }
+    }
+  ],
+  "targets" : [
+    {
+      "c99name" : "Feature",
+      "module_type" : "SwiftTarget",
+      "name" : "Feature",
+      "path" : "Sources\/Feature",
+      "sources" : [
+        "Feature.swift"
+      ],
+      "target_dependencies" : [
+        "Core"
+      ],
+      "type" : "library"
+    },
+    {
+      "c99name" : "Core",
+      "module_type" : "SwiftTarget",
+      "name" : "Core",
+      "path" : "Sources\/Core",
+      "sources" : [
+        "Core.swift"
+      ],
+      "type" : "library"
+    }
+  ],
+  "tools_version" : "5.9"
+}

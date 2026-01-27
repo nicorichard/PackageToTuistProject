@@ -8,6 +8,9 @@ struct PackageScanner {
     /// Timeout for each package describe operation (in seconds)
     private let timeoutSeconds: UInt64 = 30
 
+    /// Name of the cache file stored next to each Package.swift
+    static let cacheFileName = ".package-description.json"
+
     /// Directories to exclude from scanning
     private let excludedDirectories: Set<String> = [
         ".build",
@@ -71,8 +74,70 @@ struct PackageScanner {
         return packages
     }
 
-    /// Load package description using `swift package describe --type json` with timeout
+    /// Load cached description if available and still valid (cache newer than Package.swift)
+    func loadCachedDescription(at packagePath: URL) -> PackageDescription? {
+        let cacheFile = packagePath.deletingLastPathComponent()
+            .appendingPathComponent(Self.cacheFileName)
+
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: cacheFile.path) else { return nil }
+
+        // Check if cache is newer than Package.swift
+        guard let pkgMod = try? fm.attributesOfItem(atPath: packagePath.path)[.modificationDate] as? Date,
+              let cacheMod = try? fm.attributesOfItem(atPath: cacheFile.path)[.modificationDate] as? Date,
+              cacheMod > pkgMod else { return nil }
+
+        do {
+            let data = try Data(contentsOf: cacheFile)
+            return try JSONDecoder().decode(PackageDescription.self, from: data)
+        } catch {
+            if verbose {
+                print("Cache read failed for \(packagePath.path): \(error.localizedDescription)")
+            }
+            return nil
+        }
+    }
+
+    /// Write description to cache file
+    func cacheDescription(_ description: PackageDescription, at packagePath: URL) throws {
+        let cacheFile = packagePath.deletingLastPathComponent()
+            .appendingPathComponent(Self.cacheFileName)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(description)
+        try data.write(to: cacheFile)
+    }
+
+    /// Load package description, using cache if valid, otherwise running `swift package describe`
     func loadPackageDescription(at packagePath: URL) async throws -> PackageDescription {
+        // Try cache first
+        if let cached = loadCachedDescription(at: packagePath) {
+            if verbose {
+                print("Using cached description for: \(packagePath.deletingLastPathComponent().path)")
+            }
+            return cached
+        }
+
+        // Cache miss - load from swift package describe
+        let description = try await loadPackageDescriptionFromSwift(at: packagePath)
+
+        // Cache the result
+        do {
+            try cacheDescription(description, at: packagePath)
+            if verbose {
+                print("Cached description for: \(packagePath.deletingLastPathComponent().path)")
+            }
+        } catch {
+            if verbose {
+                print("Failed to cache description: \(error.localizedDescription)")
+            }
+        }
+
+        return description
+    }
+
+    /// Load package description using `swift package describe --type json` with timeout
+    private func loadPackageDescriptionFromSwift(at packagePath: URL) async throws -> PackageDescription {
         let packageDirectory = packagePath.deletingLastPathComponent()
 
         let process = Process()

@@ -1,0 +1,55 @@
+{
+  "dependencies" : [
+    {
+      "identity" : "swift-argument-parser",
+      "requirement" : {
+        "range" : [
+          {
+            "lower_bound" : "1.0.0",
+            "upper_bound" : "2.0.0"
+          }
+        ]
+      },
+      "type" : "sourceControl",
+      "url" : "https:\/\/github.com\/apple\/swift-argument-parser"
+    }
+  ],
+  "manifest_display_name" : "WithDependencies",
+  "name" : "WithDependencies",
+  "path" : "\/Users\/nico\/Projects\/PackageToTuistProject\/Tests\/Fixtures\/WithDependencies",
+  "platforms" : [
+    {
+      "name" : "ios",
+      "version" : "15.0"
+    }
+  ],
+  "products" : [
+    {
+      "name" : "WithDependencies",
+      "targets" : [
+        "WithDependencies"
+      ],
+      "type" : {
+        "library" : [
+          "automatic"
+        ]
+      }
+    }
+  ],
+  "targets" : [
+    {
+      "c99name" : "WithDependencies",
+      "module_type" : "SwiftTarget",
+      "name" : "WithDependencies",
+      "path" : "Sources\/WithDependencies",
+      "product_dependencies" : [
+        "ArgumentParser"
+      ],
+      "sources" : [
+        "WithDependencies.swift"
+      ],
+      "type" : "library"
+    }
+  ],
+  "tools_version" : "5.9"
+}

@@ -1,0 +1,53 @@
+{
+  "dependencies" : [
+
+  ],
+  "manifest_display_name" : "WithTestTarget",
+  "name" : "WithTestTarget",
+  "path" : "\/Users\/nico\/Projects\/PackageToTuistProject\/Tests\/Fixtures\/WithTestTarget",
+  "platforms" : [
+    {
+      "name" : "ios",
+      "version" : "15.0"
+    }
+  ],
+  "products" : [
+    {
+      "name" : "MyLib",
+      "targets" : [
+        "MyLib"
+      ],
+      "type" : {
+        "library" : [
+          "automatic"
+        ]
+      }
+    }
+  ],
+  "targets" : [
+    {
+      "c99name" : "MyLibTests",
+      "module_type" : "SwiftTarget",
+      "name" : "MyLibTests",
+      "path" : "Tests\/MyLibTests",
+      "sources" : [
+        "MyLibTests.swift"
+      ],
+      "target_dependencies" : [
+        "MyLib"
+      ],
+      "type" : "test"
+    },
+    {
+      "c99name" : "MyLib",
+      "module_type" : "SwiftTarget",
+      "name" : "MyLib",
+      "path" : "Sources\/MyLib",
+      "sources" : [
+        "MyLib.swift"
+      ],
+      "type" : "library"
+    }
+  ],
+  "tools_version" : "5.9"
+}

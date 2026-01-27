@@ -2072,6 +2072,158 @@ struct PackageScannerTests {
 
         #expect(packages.isEmpty)
     }
+
+    @Test("cacheFileName returns expected value")
+    func cacheFileNameReturnsExpectedValue() {
+        #expect(PackageScanner.cacheFileName == ".package-description.json")
+    }
+
+    @Test("loadCachedDescription returns nil when cache file does not exist")
+    func loadCachedDescriptionReturnsNilWhenCacheMissing() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PackageScannerTest-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        // Create Package.swift but no cache file
+        let packagePath = tempDir.appendingPathComponent("Package.swift")
+        try "// Package".write(to: packagePath, atomically: true, encoding: .utf8)
+
+        let scanner = PackageScanner(rootDirectory: tempDir)
+        let cached = scanner.loadCachedDescription(at: packagePath)
+
+        #expect(cached == nil)
+    }
+
+    @Test("loadCachedDescription returns nil when cache is older than Package.swift")
+    func loadCachedDescriptionReturnsNilWhenCacheIsStale() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PackageScannerTest-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        // Create cache file first (older)
+        let cachePath = tempDir.appendingPathComponent(PackageScanner.cacheFileName)
+        let cacheContent = """
+        {"name":"TestPackage","path":"/test","products":[],"targets":[],"dependencies":null}
+        """
+        try cacheContent.write(to: cachePath, atomically: true, encoding: .utf8)
+
+        Thread.sleep(forTimeInterval: 0.1)
+
+        // Create Package.swift second (newer)
+        let packagePath = tempDir.appendingPathComponent("Package.swift")
+        try "// Package".write(to: packagePath, atomically: true, encoding: .utf8)
+
+        let scanner = PackageScanner(rootDirectory: tempDir)
+        let cached = scanner.loadCachedDescription(at: packagePath)
+
+        #expect(cached == nil)
+    }
+
+    @Test("loadCachedDescription returns description when cache is newer than Package.swift")
+    func loadCachedDescriptionReturnsCachedWhenValid() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PackageScannerTest-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        // Create Package.swift first (older)
+        let packagePath = tempDir.appendingPathComponent("Package.swift")
+        try "// Package".write(to: packagePath, atomically: true, encoding: .utf8)
+
+        Thread.sleep(forTimeInterval: 0.1)
+
+        // Create cache file second (newer)
+        let cachePath = tempDir.appendingPathComponent(PackageScanner.cacheFileName)
+        let cacheContent = """
+        {"name":"CachedPackage","path":"/cached","products":[],"targets":[]}
+        """
+        try cacheContent.write(to: cachePath, atomically: true, encoding: .utf8)
+
+        let scanner = PackageScanner(rootDirectory: tempDir)
+        let cached = scanner.loadCachedDescription(at: packagePath)
+
+        #expect(cached != nil)
+        #expect(cached?.name == "CachedPackage")
+    }
+
+    @Test("cacheDescription writes valid JSON file")
+    func cacheDescriptionWritesValidJSON() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PackageScannerTest-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let packagePath = tempDir.appendingPathComponent("Package.swift")
+        try "// Package".write(to: packagePath, atomically: true, encoding: .utf8)
+
+        // Create a minimal description to cache
+        let description = PackageDescription(
+            name: "TestPackage",
+            manifestDisplayName: nil,
+            path: tempDir.path,
+            platforms: nil,
+            products: [],
+            targets: [],
+            dependencies: nil,
+            toolsVersion: "5.9"
+        )
+
+        let scanner = PackageScanner(rootDirectory: tempDir)
+        try scanner.cacheDescription(description, at: packagePath)
+
+        // Verify cache file was written
+        let cachePath = tempDir.appendingPathComponent(PackageScanner.cacheFileName)
+        #expect(FileManager.default.fileExists(atPath: cachePath.path))
+
+        // Verify it can be read back
+        let data = try Data(contentsOf: cachePath)
+        let decoded = try JSONDecoder().decode(PackageDescription.self, from: data)
+        #expect(decoded.name == "TestPackage")
+        #expect(decoded.toolsVersion == "5.9")
+    }
+
+    @Test("cacheDescription and loadCachedDescription round trip")
+    func cacheRoundTrip() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PackageScannerTest-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let packagePath = tempDir.appendingPathComponent("Package.swift")
+        try "// Package".write(to: packagePath, atomically: true, encoding: .utf8)
+
+        Thread.sleep(forTimeInterval: 0.1)
+
+        let original = PackageDescription(
+            name: "RoundTripPackage",
+            manifestDisplayName: "Round Trip",
+            path: tempDir.path,
+            platforms: [PackageDescription.Platform(name: "macos", version: "14.0")],
+            products: [
+                PackageDescription.Product(
+                    name: "MyLib",
+                    targets: ["MyTarget"],
+                    type: PackageDescription.Product.ProductType(library: ["automatic"], executable: nil)
+                )
+            ],
+            targets: [],
+            dependencies: nil,
+            toolsVersion: "5.9"
+        )
+
+        let scanner = PackageScanner(rootDirectory: tempDir)
+        try scanner.cacheDescription(original, at: packagePath)
+
+        let loaded = scanner.loadCachedDescription(at: packagePath)
+        #expect(loaded != nil)
+        #expect(loaded?.name == "RoundTripPackage")
+        #expect(loaded?.manifestDisplayName == "Round Trip")
+        #expect(loaded?.platforms?.count == 1)
+        #expect(loaded?.products.count == 1)
+        #expect(loaded?.hasLibraryProduct == true)
+    }
 }
 
 // MARK: - ImportScanner Tests
@@ -2505,146 +2657,103 @@ struct AllOrNothingCacheTests {
         try? FileManager.default.removeItem(at: url)
     }
 
-    @Test("canSkipAllPackages returns false when any Project.swift does not exist")
-    func canSkipReturnsFalseWhenAnyProjectDoesNotExist() throws {
+    @Test("needsRegeneration returns true when Project.swift does not exist")
+    func needsRegenerationReturnsTrueWhenProjectMissing() throws {
         let tempDir = try createTempDirectory()
         defer { cleanupTempDirectory(tempDir) }
 
-        // Create two package directories
-        let pkg1Dir = tempDir.appendingPathComponent("Pkg1")
-        let pkg2Dir = tempDir.appendingPathComponent("Pkg2")
-        try FileManager.default.createDirectory(at: pkg1Dir, withIntermediateDirectories: true)
-        try FileManager.default.createDirectory(at: pkg2Dir, withIntermediateDirectories: true)
-
-        // Create Package.swift in both
-        let pkg1Path = pkg1Dir.appendingPathComponent("Package.swift")
-        let pkg2Path = pkg2Dir.appendingPathComponent("Package.swift")
-        try "// Package1".write(to: pkg1Path, atomically: true, encoding: .utf8)
-        try "// Package2".write(to: pkg2Path, atomically: true, encoding: .utf8)
-
-        // Create Project.swift only in pkg1
-        let proj1Path = pkg1Dir.appendingPathComponent("Project.swift")
-        try "// Project1".write(to: proj1Path, atomically: true, encoding: .utf8)
-        // pkg2 has no Project.swift
-
-        let command = ConvertCommand(
-            rootDirectory: tempDir.path,
-            bundleIdPrefix: "com.test",
-            productType: "staticFramework",
-            tuistDir: nil,
-            dryRun: false,
-            verbose: false,
-            force: false
-        )
-
-        let canSkip = command.canSkipAllPackages(packagePaths: [pkg1Path, pkg2Path])
-        #expect(canSkip == false)
-    }
-
-    @Test("canSkipAllPackages returns false when any Package.swift is newer than its Project.swift")
-    func canSkipReturnsFalseWhenAnyPackageIsNewer() throws {
-        let tempDir = try createTempDirectory()
-        defer { cleanupTempDirectory(tempDir) }
-
-        // Create two package directories
-        let pkg1Dir = tempDir.appendingPathComponent("Pkg1")
-        let pkg2Dir = tempDir.appendingPathComponent("Pkg2")
-        try FileManager.default.createDirectory(at: pkg1Dir, withIntermediateDirectories: true)
-        try FileManager.default.createDirectory(at: pkg2Dir, withIntermediateDirectories: true)
-
-        // pkg1: Project.swift newer than Package.swift (up-to-date)
-        let pkg1Path = pkg1Dir.appendingPathComponent("Package.swift")
-        try "// Package1".write(to: pkg1Path, atomically: true, encoding: .utf8)
-        Thread.sleep(forTimeInterval: 0.1)
-        let proj1Path = pkg1Dir.appendingPathComponent("Project.swift")
-        try "// Project1".write(to: proj1Path, atomically: true, encoding: .utf8)
-
-        Thread.sleep(forTimeInterval: 0.1)
-
-        // pkg2: Package.swift newer than Project.swift (needs regeneration)
-        let proj2Path = pkg2Dir.appendingPathComponent("Project.swift")
-        try "// Project2".write(to: proj2Path, atomically: true, encoding: .utf8)
-        Thread.sleep(forTimeInterval: 0.1)
-        let pkg2Path = pkg2Dir.appendingPathComponent("Package.swift")
-        try "// Package2".write(to: pkg2Path, atomically: true, encoding: .utf8)
-
-        let command = ConvertCommand(
-            rootDirectory: tempDir.path,
-            bundleIdPrefix: "com.test",
-            productType: "staticFramework",
-            tuistDir: nil,
-            dryRun: false,
-            verbose: false,
-            force: false
-        )
-
-        let canSkip = command.canSkipAllPackages(packagePaths: [pkg1Path, pkg2Path])
-        #expect(canSkip == false)
-    }
-
-    @Test("canSkipAllPackages returns true when all Project.swift files are newer than all Package.swift files")
-    func canSkipReturnsTrueWhenAllProjectsAreNewer() throws {
-        let tempDir = try createTempDirectory()
-        defer { cleanupTempDirectory(tempDir) }
-
-        // Create two package directories
-        let pkg1Dir = tempDir.appendingPathComponent("Pkg1")
-        let pkg2Dir = tempDir.appendingPathComponent("Pkg2")
-        try FileManager.default.createDirectory(at: pkg1Dir, withIntermediateDirectories: true)
-        try FileManager.default.createDirectory(at: pkg2Dir, withIntermediateDirectories: true)
-
-        // Create all Package.swift files first (older)
-        let pkg1Path = pkg1Dir.appendingPathComponent("Package.swift")
-        let pkg2Path = pkg2Dir.appendingPathComponent("Package.swift")
-        try "// Package1".write(to: pkg1Path, atomically: true, encoding: .utf8)
-        try "// Package2".write(to: pkg2Path, atomically: true, encoding: .utf8)
-
-        Thread.sleep(forTimeInterval: 0.1)
-
-        // Create all Project.swift files second (newer)
-        let proj1Path = pkg1Dir.appendingPathComponent("Project.swift")
-        let proj2Path = pkg2Dir.appendingPathComponent("Project.swift")
-        try "// Project1".write(to: proj1Path, atomically: true, encoding: .utf8)
-        try "// Project2".write(to: proj2Path, atomically: true, encoding: .utf8)
-
-        let command = ConvertCommand(
-            rootDirectory: tempDir.path,
-            bundleIdPrefix: "com.test",
-            productType: "staticFramework",
-            tuistDir: nil,
-            dryRun: false,
-            verbose: false,
-            force: false
-        )
-
-        let canSkip = command.canSkipAllPackages(packagePaths: [pkg1Path, pkg2Path])
-        #expect(canSkip == true)
-    }
-
-    @Test("canSkipAllPackages returns false for empty package list")
-    func canSkipReturnsFalseForEmptyList() throws {
-        let command = ConvertCommand(
-            rootDirectory: "/path/to/root",
-            bundleIdPrefix: "com.test",
-            productType: "staticFramework",
-            tuistDir: nil,
-            dryRun: false,
-            verbose: false,
-            force: false
-        )
-
-        let canSkip = command.canSkipAllPackages(packagePaths: [])
-        #expect(canSkip == false)
-    }
-
-    @Test("canSkipAllPackages works with single package")
-    func canSkipWorksWithSinglePackage() throws {
-        let tempDir = try createTempDirectory()
-        defer { cleanupTempDirectory(tempDir) }
-
-        // Create Package.swift first (older)
+        // Create Package.swift and cache file, but no Project.swift
         let packagePath = tempDir.appendingPathComponent("Package.swift")
         try "// Package".write(to: packagePath, atomically: true, encoding: .utf8)
+
+        let cachePath = tempDir.appendingPathComponent(PackageScanner.cacheFileName)
+        try "{}".write(to: cachePath, atomically: true, encoding: .utf8)
+
+        let command = ConvertCommand(
+            rootDirectory: tempDir.path,
+            bundleIdPrefix: "com.test",
+            productType: "staticFramework",
+            tuistDir: nil,
+            dryRun: false,
+            verbose: false,
+            force: false
+        )
+
+        let needsRegen = command.needsRegeneration(packagePath: packagePath)
+        #expect(needsRegen == true)
+    }
+
+    @Test("needsRegeneration returns true when cache file does not exist")
+    func needsRegenerationReturnsTrueWhenCacheMissing() throws {
+        let tempDir = try createTempDirectory()
+        defer { cleanupTempDirectory(tempDir) }
+
+        // Create Package.swift and Project.swift, but no cache file
+        let packagePath = tempDir.appendingPathComponent("Package.swift")
+        try "// Package".write(to: packagePath, atomically: true, encoding: .utf8)
+
+        let projectPath = tempDir.appendingPathComponent("Project.swift")
+        try "// Project".write(to: projectPath, atomically: true, encoding: .utf8)
+
+        let command = ConvertCommand(
+            rootDirectory: tempDir.path,
+            bundleIdPrefix: "com.test",
+            productType: "staticFramework",
+            tuistDir: nil,
+            dryRun: false,
+            verbose: false,
+            force: false
+        )
+
+        let needsRegen = command.needsRegeneration(packagePath: packagePath)
+        #expect(needsRegen == true)
+    }
+
+    @Test("needsRegeneration returns true when Project.swift is older than cache")
+    func needsRegenerationReturnsTrueWhenProjectOlderThanCache() throws {
+        let tempDir = try createTempDirectory()
+        defer { cleanupTempDirectory(tempDir) }
+
+        // Create Package.swift
+        let packagePath = tempDir.appendingPathComponent("Package.swift")
+        try "// Package".write(to: packagePath, atomically: true, encoding: .utf8)
+
+        // Create Project.swift first (older)
+        let projectPath = tempDir.appendingPathComponent("Project.swift")
+        try "// Project".write(to: projectPath, atomically: true, encoding: .utf8)
+
+        Thread.sleep(forTimeInterval: 0.1)
+
+        // Create cache file second (newer)
+        let cachePath = tempDir.appendingPathComponent(PackageScanner.cacheFileName)
+        try "{}".write(to: cachePath, atomically: true, encoding: .utf8)
+
+        let command = ConvertCommand(
+            rootDirectory: tempDir.path,
+            bundleIdPrefix: "com.test",
+            productType: "staticFramework",
+            tuistDir: nil,
+            dryRun: false,
+            verbose: false,
+            force: false
+        )
+
+        let needsRegen = command.needsRegeneration(packagePath: packagePath)
+        #expect(needsRegen == true)
+    }
+
+    @Test("needsRegeneration returns false when Project.swift is newer than cache")
+    func needsRegenerationReturnsFalseWhenProjectNewerThanCache() throws {
+        let tempDir = try createTempDirectory()
+        defer { cleanupTempDirectory(tempDir) }
+
+        // Create Package.swift
+        let packagePath = tempDir.appendingPathComponent("Package.swift")
+        try "// Package".write(to: packagePath, atomically: true, encoding: .utf8)
+
+        // Create cache file first (older)
+        let cachePath = tempDir.appendingPathComponent(PackageScanner.cacheFileName)
+        try "{}".write(to: cachePath, atomically: true, encoding: .utf8)
 
         Thread.sleep(forTimeInterval: 0.1)
 
@@ -2662,8 +2771,8 @@ struct AllOrNothingCacheTests {
             force: false
         )
 
-        let canSkip = command.canSkipAllPackages(packagePaths: [packagePath])
-        #expect(canSkip == true)
+        let needsRegen = command.needsRegeneration(packagePath: packagePath)
+        #expect(needsRegen == false)
     }
 
     @Test("ConvertCommand initializes with force flag")

@@ -1,0 +1,40 @@
+{
+  "dependencies" : [
+
+  ],
+  "manifest_display_name" : "BasicLibrary",
+  "name" : "BasicLibrary",
+  "path" : "\/Users\/nico\/Projects\/PackageToTuistProject\/Tests\/Fixtures\/BasicLibrary",
+  "platforms" : [
+    {
+      "name" : "ios",
+      "version" : "15.0"
+    }
+  ],
+  "products" : [
+    {
+      "name" : "BasicLibrary",
+      "targets" : [
+        "BasicLibrary"
+      ],
+      "type" : {
+        "library" : [
+          "automatic"
+        ]
+      }
+    }
+  ],
+  "targets" : [
+    {
+      "c99name" : "BasicLibrary",
+      "module_type" : "SwiftTarget",
+      "name" : "BasicLibrary",
+      "path" : "Sources\/BasicLibrary",
+      "sources" : [
+        "BasicLibrary.swift"
+      ],
+      "type" : "library"
+    }
+  ],
+  "tools_version" : "5.9"
+}

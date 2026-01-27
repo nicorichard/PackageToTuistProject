@@ -82,51 +82,28 @@ struct ConvertCommand {
         self.force = force
     }
 
-    /// Check if ALL packages can be skipped (all-or-nothing cache check).
-    /// Returns true only if the oldest Project.swift is newer than the newest Package.swift.
-    func canSkipAllPackages(packagePaths: [URL]) -> Bool {
-        guard !packagePaths.isEmpty else { return false }
+    /// Check if a single package needs regeneration.
+    /// Returns true if Project.swift doesn't exist or is older than the cache file.
+    func needsRegeneration(packagePath: URL) -> Bool {
+        let dir = packagePath.deletingLastPathComponent()
+        let cacheFile = dir.appendingPathComponent(PackageScanner.cacheFileName)
+        let projectFile = dir.appendingPathComponent("Project.swift")
 
         let fm = FileManager.default
-        var newestPackageSwift: Date?
-        var oldestProjectSwift: Date?
 
-        for packagePath in packagePaths {
-            let projectPath = packagePath.deletingLastPathComponent()
-                .appendingPathComponent("Project.swift")
+        // If Project.swift doesn't exist, needs regeneration
+        guard fm.fileExists(atPath: projectFile.path) else { return true }
 
-            // If any Project.swift doesn't exist, we need to regenerate
-            guard fm.fileExists(atPath: projectPath.path) else { return false }
+        // If cache file doesn't exist, needs regeneration
+        guard fm.fileExists(atPath: cacheFile.path) else { return true }
 
-            do {
-                let pkgAttrs = try fm.attributesOfItem(atPath: packagePath.path)
-                let projAttrs = try fm.attributesOfItem(atPath: projectPath.path)
-
-                guard let pkgMod = pkgAttrs[.modificationDate] as? Date,
-                      let projMod = projAttrs[.modificationDate] as? Date else {
-                    return false
-                }
-
-                // Track the newest Package.swift
-                if newestPackageSwift == nil || pkgMod > newestPackageSwift! {
-                    newestPackageSwift = pkgMod
-                }
-
-                // Track the oldest Project.swift
-                if oldestProjectSwift == nil || projMod < oldestProjectSwift! {
-                    oldestProjectSwift = projMod
-                }
-            } catch {
-                return false  // Regenerate if we can't read timestamps
-            }
+        // Compare timestamps: regenerate if Project.swift is older than cache
+        guard let cacheMod = try? fm.attributesOfItem(atPath: cacheFile.path)[.modificationDate] as? Date,
+              let projMod = try? fm.attributesOfItem(atPath: projectFile.path)[.modificationDate] as? Date else {
+            return true
         }
 
-        // Skip only if the oldest Project.swift is newer than the newest Package.swift
-        guard let newest = newestPackageSwift, let oldest = oldestProjectSwift else {
-            return false
-        }
-
-        return oldest > newest
+        return projMod < cacheMod  // Regenerate if Project.swift older than cache
     }
 
     func execute() async throws {
@@ -145,36 +122,44 @@ struct ConvertCommand {
 
         print("Found \(packagePaths.count) package(s)")
 
-        // All-or-nothing cache check: skip entire generation if all Project.swift files are up-to-date
-        if !force && canSkipAllPackages(packagePaths: packagePaths) {
-            print("\nAll packages are up-to-date. Use --force to regenerate.")
-            return
-        }
-
-        // Step 2: Load all package descriptions in parallel
+        // Step 2: Load all package descriptions in parallel (uses cache when valid)
         print("\n[Step 2/3] Loading package descriptions (up to \(maxConcurrentLoads) in parallel)...")
-        let descriptions = await loadPackageDescriptions(
+        let allDescriptions = await loadPackageDescriptions(
             packagePaths: packagePaths,
             scanner: scanner
         )
 
-        print("  Loaded \(descriptions.count) of \(packagePaths.count) package(s)")
+        print("  Loaded \(allDescriptions.count) of \(packagePaths.count) package(s)")
 
-        if descriptions.isEmpty {
+        if allDescriptions.isEmpty {
             print("No packages could be loaded.")
             return
         }
 
-        // Step 3: Process each package (build deps, convert, write)
-        print("\n[Step 3/3] Processing packages...")
+        // Filter to only packages that need regeneration (unless --force)
+        let descriptionsToProcess: [URL: PackageDescription]
+        if force {
+            descriptionsToProcess = allDescriptions
+        } else {
+            descriptionsToProcess = allDescriptions.filter { needsRegeneration(packagePath: $0.key) }
+        }
+
+        if descriptionsToProcess.isEmpty {
+            print("\nAll packages are up-to-date. Use --force to regenerate.")
+            return
+        }
+
+        // Step 3: Process packages that need regeneration
+        print("\n[Step 3/3] Processing \(descriptionsToProcess.count) package(s)...")
         try await processPackages(
-            descriptions: descriptions,
+            descriptions: descriptionsToProcess,
+            allDescriptions: allDescriptions,
             rootURL: rootURL
         )
 
         print("\nConversion complete!")
         if !dryRun {
-            print("Generated \(descriptions.count) Project.swift file(s)")
+            print("Generated \(descriptionsToProcess.count) Project.swift file(s)")
         }
     }
 
@@ -255,18 +240,23 @@ struct ConvertCommand {
     }
 
     /// Process each package: build collector, convert, and write
+    /// - Parameters:
+    ///   - descriptions: Packages to process (may be a subset)
+    ///   - allDescriptions: All loaded packages (for dependency resolution)
+    ///   - rootURL: Root directory URL
     private func processPackages(
         descriptions: [URL: PackageDescription],
+        allDescriptions: [URL: PackageDescription],
         rootURL: URL
     ) async throws {
-        // Pre-compute relative path matrix: O(n²) but only happens once
-        let pathMatrix = buildPathMatrix(descriptions: descriptions)
+        // Pre-compute relative path matrix for ALL packages (needed for dependency resolution)
+        let pathMatrix = buildPathMatrix(descriptions: allDescriptions)
 
-        // Build base dependency collector with external dependencies only
+        // Build base dependency collector with external dependencies from ALL packages
         var baseCollector = DependencyCollector()
 
-        // Collect external dependencies
-        for description in descriptions.values {
+        // Collect external dependencies from all packages
+        for description in allDescriptions.values {
             if let deps = description.dependencies {
                 for dep in deps where dep.type == "sourceControl" {
                     if let url = dep.url, let requirement = dep.requirement {
@@ -288,8 +278,8 @@ struct ConvertCommand {
             verbose: verbose
         )
         let projectWriter = ProjectWriter()
-        let allDescriptions = Dictionary(
-            uniqueKeysWithValues: descriptions.map { ($0.key.path, $0.value) }
+        let allDescriptionsByPath = Dictionary(
+            uniqueKeysWithValues: allDescriptions.map { ($0.key.path, $0.value) }
         )
 
         // Process packages in parallel with controlled concurrency
@@ -312,7 +302,7 @@ struct ConvertCommand {
                     let packageCollector = self.buildPackageCollector(
                         base: externalDepsCollector,
                         fromPackage: packagePath,
-                        descriptions: descriptions,
+                        descriptions: allDescriptions,
                         pathMatrix: pathMatrix
                     )
 
@@ -321,7 +311,7 @@ struct ConvertCommand {
                         package: description,
                         packagePath: packagePath,
                         collector: packageCollector,
-                        allDescriptions: allDescriptions
+                        allDescriptions: allDescriptionsByPath
                     )
 
                     // Write (each package writes to its own file)
@@ -338,7 +328,7 @@ struct ConvertCommand {
                         let packageCollector = self.buildPackageCollector(
                             base: externalDepsCollector,
                             fromPackage: packagePath,
-                            descriptions: descriptions,
+                            descriptions: allDescriptions,
                             pathMatrix: pathMatrix
                         )
 
@@ -346,7 +336,7 @@ struct ConvertCommand {
                             package: description,
                             packagePath: packagePath,
                             collector: packageCollector,
-                            allDescriptions: allDescriptions
+                            allDescriptions: allDescriptionsByPath
                         )
 
                         try projectWriter.write(project: project, dryRun: isDryRun, verbose: isVerbose)

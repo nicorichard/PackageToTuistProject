@@ -1,8 +1,8 @@
 import Foundation
 
-/// Decodable types for `swift package describe --type json` output
+/// Codable types for `swift package describe --type json` output
 
-struct PackageDescription: Decodable {
+struct PackageDescription: Codable {
     let name: String
     let manifestDisplayName: String?
     let path: String
@@ -11,6 +11,26 @@ struct PackageDescription: Decodable {
     let targets: [Target]
     let dependencies: [Dependency]?
     let toolsVersion: String?
+
+    init(
+        name: String,
+        manifestDisplayName: String?,
+        path: String,
+        platforms: [Platform]?,
+        products: [Product],
+        targets: [Target],
+        dependencies: [Dependency]?,
+        toolsVersion: String?
+    ) {
+        self.name = name
+        self.manifestDisplayName = manifestDisplayName
+        self.path = path
+        self.platforms = platforms
+        self.products = products
+        self.targets = targets
+        self.dependencies = dependencies
+        self.toolsVersion = toolsVersion
+    }
 
     /// Returns true if the package has at least one library product
     var hasLibraryProduct: Bool {
@@ -28,19 +48,35 @@ struct PackageDescription: Decodable {
         case toolsVersion = "tools_version"
     }
 
-    struct Platform: Decodable {
+    struct Platform: Codable {
         let name: String
         let version: String
+
+        init(name: String, version: String) {
+            self.name = name
+            self.version = version
+        }
     }
 
-    struct Product: Decodable {
+    struct Product: Codable {
         let name: String
         let targets: [String]
         let type: ProductType
 
-        struct ProductType: Decodable {
+        init(name: String, targets: [String], type: ProductType) {
+            self.name = name
+            self.targets = targets
+            self.type = type
+        }
+
+        struct ProductType: Codable {
             let library: [String]?
             let executable: Bool?
+
+            init(library: [String]?, executable: Bool?) {
+                self.library = library
+                self.executable = executable
+            }
 
             init(from decoder: Decoder) throws {
                 let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -53,6 +89,12 @@ struct PackageDescription: Decodable {
                 }
             }
 
+            func encode(to encoder: Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encodeIfPresent(library, forKey: .library)
+                try container.encodeIfPresent(executable, forKey: .executable)
+            }
+
             enum CodingKeys: String, CodingKey {
                 case library
                 case executable
@@ -60,7 +102,7 @@ struct PackageDescription: Decodable {
         }
     }
 
-    struct Target: Decodable {
+    struct Target: Codable {
         let name: String
         let c99name: String?
         let type: String
@@ -83,34 +125,34 @@ struct PackageDescription: Decodable {
             case moduleType = "module_type"
         }
 
-        struct Resource: Decodable {
+        struct Resource: Codable {
             let path: String
             let rule: Rule
 
-            struct Rule: Decodable {
+            struct Rule: Codable {
                 let process: ProcessRule?
                 let copy: CopyRule?
 
-                struct ProcessRule: Decodable {}
-                struct CopyRule: Decodable {}
+                struct ProcessRule: Codable {}
+                struct CopyRule: Codable {}
             }
         }
     }
 
-    struct Dependency: Decodable {
+    struct Dependency: Codable {
         let identity: String
         let type: String
         let path: String?
         let url: String?
         let requirement: Requirement?
 
-        struct Requirement: Decodable {
+        struct Requirement: Codable {
             let range: [Range]?
             let exact: [String]?
             let branch: [String]?
             let revision: [String]?
 
-            struct Range: Decodable {
+            struct Range: Codable {
                 let lowerBound: String
                 let upperBound: String
 
