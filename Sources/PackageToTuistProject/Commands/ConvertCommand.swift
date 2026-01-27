@@ -59,9 +59,75 @@ struct ConvertCommand {
     let tuistDir: String?
     let dryRun: Bool
     let verbose: Bool
+    let force: Bool
 
     /// Maximum number of concurrent package loads
     private let maxConcurrentLoads = 8
+
+    init(
+        rootDirectory: String,
+        bundleIdPrefix: String,
+        productType: String,
+        tuistDir: String?,
+        dryRun: Bool,
+        verbose: Bool,
+        force: Bool = false
+    ) {
+        self.rootDirectory = rootDirectory
+        self.bundleIdPrefix = bundleIdPrefix
+        self.productType = productType
+        self.tuistDir = tuistDir
+        self.dryRun = dryRun
+        self.verbose = verbose
+        self.force = force
+    }
+
+    /// Check if ALL packages can be skipped (all-or-nothing cache check).
+    /// Returns true only if the oldest Project.swift is newer than the newest Package.swift.
+    func canSkipAllPackages(packagePaths: [URL]) -> Bool {
+        guard !packagePaths.isEmpty else { return false }
+
+        let fm = FileManager.default
+        var newestPackageSwift: Date?
+        var oldestProjectSwift: Date?
+
+        for packagePath in packagePaths {
+            let projectPath = packagePath.deletingLastPathComponent()
+                .appendingPathComponent("Project.swift")
+
+            // If any Project.swift doesn't exist, we need to regenerate
+            guard fm.fileExists(atPath: projectPath.path) else { return false }
+
+            do {
+                let pkgAttrs = try fm.attributesOfItem(atPath: packagePath.path)
+                let projAttrs = try fm.attributesOfItem(atPath: projectPath.path)
+
+                guard let pkgMod = pkgAttrs[.modificationDate] as? Date,
+                      let projMod = projAttrs[.modificationDate] as? Date else {
+                    return false
+                }
+
+                // Track the newest Package.swift
+                if newestPackageSwift == nil || pkgMod > newestPackageSwift! {
+                    newestPackageSwift = pkgMod
+                }
+
+                // Track the oldest Project.swift
+                if oldestProjectSwift == nil || projMod < oldestProjectSwift! {
+                    oldestProjectSwift = projMod
+                }
+            } catch {
+                return false  // Regenerate if we can't read timestamps
+            }
+        }
+
+        // Skip only if the oldest Project.swift is newer than the newest Package.swift
+        guard let newest = newestPackageSwift, let oldest = oldestProjectSwift else {
+            return false
+        }
+
+        return oldest > newest
+    }
 
     func execute() async throws {
         let rootURL = URL(fileURLWithPath: rootDirectory).standardizedFileURL
@@ -79,12 +145,19 @@ struct ConvertCommand {
 
         print("Found \(packagePaths.count) package(s)")
 
+        // All-or-nothing cache check: skip entire generation if all Project.swift files are up-to-date
+        if !force && canSkipAllPackages(packagePaths: packagePaths) {
+            print("\nAll packages are up-to-date. Use --force to regenerate.")
+            return
+        }
+
         // Step 2: Load all package descriptions in parallel
         print("\n[Step 2/3] Loading package descriptions (up to \(maxConcurrentLoads) in parallel)...")
         let descriptions = await loadPackageDescriptions(
             packagePaths: packagePaths,
             scanner: scanner
         )
+
         print("  Loaded \(descriptions.count) of \(packagePaths.count) package(s)")
 
         if descriptions.isEmpty {
@@ -112,7 +185,7 @@ struct ConvertCommand {
     ) async -> [URL: PackageDescription] {
         let progress = LoadingProgress(total: packagePaths.count)
 
-        return await withTaskGroup(
+        let descriptions = await withTaskGroup(
             of: (URL, PackageDescription?).self,
             returning: [URL: PackageDescription].self
         ) { group in
@@ -154,6 +227,8 @@ struct ConvertCommand {
             fflush(stdout)
             return descriptions
         }
+
+        return descriptions
     }
 
     /// Load a single package description
@@ -163,6 +238,7 @@ struct ConvertCommand {
         progress: LoadingProgress
     ) async -> (URL, PackageDescription?) {
         let packageDirName = packagePath.deletingLastPathComponent().lastPathComponent
+
         do {
             let description = try await scanner.loadPackageDescription(at: packagePath)
             // Skip packages without library products

@@ -26,6 +26,9 @@ struct PackageToTuistProject: AsyncParsableCommand {
     @Flag(name: .shortAndLong, help: "Enable verbose output")
     var verbose: Bool = false
 
+    @Flag(name: .long, help: "Regenerate all Project.swift files, ignoring timestamps")
+    var force: Bool = false
+
     func run() async throws {
         let command = ConvertCommand(
             rootDirectory: rootDirectory,
@@ -33,7 +36,8 @@ struct PackageToTuistProject: AsyncParsableCommand {
             productType: productType,
             tuistDir: tuistDir,
             dryRun: dryRun,
-            verbose: verbose
+            verbose: verbose,
+            force: force
         )
         try await command.execute()
     }

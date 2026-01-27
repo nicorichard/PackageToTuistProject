@@ -90,6 +90,7 @@ struct ConvertCommandTests {
         #expect(command.tuistDir == nil)
         #expect(command.dryRun == true)
         #expect(command.verbose == false)
+        #expect(command.force == false)  // Default value
     }
 
     @Test("initializes with custom tuist directory")
@@ -2483,5 +2484,214 @@ struct FixtureIntegrationTests {
         #expect(output.contains("product: .staticFramework"))
         #expect(output.contains("bundleId: \"com.test.BasicLibrary\""))
         #expect(!output.contains(",,"))  // No double commas
+    }
+}
+
+// MARK: - All-or-Nothing Cache Tests
+
+@Suite("AllOrNothingCache")
+struct AllOrNothingCacheTests {
+
+    /// Helper to create a temporary directory with test files
+    private func createTempDirectory() throws -> URL {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        return tempDir
+    }
+
+    /// Helper to clean up temp directory
+    private func cleanupTempDirectory(_ url: URL) {
+        try? FileManager.default.removeItem(at: url)
+    }
+
+    @Test("canSkipAllPackages returns false when any Project.swift does not exist")
+    func canSkipReturnsFalseWhenAnyProjectDoesNotExist() throws {
+        let tempDir = try createTempDirectory()
+        defer { cleanupTempDirectory(tempDir) }
+
+        // Create two package directories
+        let pkg1Dir = tempDir.appendingPathComponent("Pkg1")
+        let pkg2Dir = tempDir.appendingPathComponent("Pkg2")
+        try FileManager.default.createDirectory(at: pkg1Dir, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: pkg2Dir, withIntermediateDirectories: true)
+
+        // Create Package.swift in both
+        let pkg1Path = pkg1Dir.appendingPathComponent("Package.swift")
+        let pkg2Path = pkg2Dir.appendingPathComponent("Package.swift")
+        try "// Package1".write(to: pkg1Path, atomically: true, encoding: .utf8)
+        try "// Package2".write(to: pkg2Path, atomically: true, encoding: .utf8)
+
+        // Create Project.swift only in pkg1
+        let proj1Path = pkg1Dir.appendingPathComponent("Project.swift")
+        try "// Project1".write(to: proj1Path, atomically: true, encoding: .utf8)
+        // pkg2 has no Project.swift
+
+        let command = ConvertCommand(
+            rootDirectory: tempDir.path,
+            bundleIdPrefix: "com.test",
+            productType: "staticFramework",
+            tuistDir: nil,
+            dryRun: false,
+            verbose: false,
+            force: false
+        )
+
+        let canSkip = command.canSkipAllPackages(packagePaths: [pkg1Path, pkg2Path])
+        #expect(canSkip == false)
+    }
+
+    @Test("canSkipAllPackages returns false when any Package.swift is newer than its Project.swift")
+    func canSkipReturnsFalseWhenAnyPackageIsNewer() throws {
+        let tempDir = try createTempDirectory()
+        defer { cleanupTempDirectory(tempDir) }
+
+        // Create two package directories
+        let pkg1Dir = tempDir.appendingPathComponent("Pkg1")
+        let pkg2Dir = tempDir.appendingPathComponent("Pkg2")
+        try FileManager.default.createDirectory(at: pkg1Dir, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: pkg2Dir, withIntermediateDirectories: true)
+
+        // pkg1: Project.swift newer than Package.swift (up-to-date)
+        let pkg1Path = pkg1Dir.appendingPathComponent("Package.swift")
+        try "// Package1".write(to: pkg1Path, atomically: true, encoding: .utf8)
+        Thread.sleep(forTimeInterval: 0.1)
+        let proj1Path = pkg1Dir.appendingPathComponent("Project.swift")
+        try "// Project1".write(to: proj1Path, atomically: true, encoding: .utf8)
+
+        Thread.sleep(forTimeInterval: 0.1)
+
+        // pkg2: Package.swift newer than Project.swift (needs regeneration)
+        let proj2Path = pkg2Dir.appendingPathComponent("Project.swift")
+        try "// Project2".write(to: proj2Path, atomically: true, encoding: .utf8)
+        Thread.sleep(forTimeInterval: 0.1)
+        let pkg2Path = pkg2Dir.appendingPathComponent("Package.swift")
+        try "// Package2".write(to: pkg2Path, atomically: true, encoding: .utf8)
+
+        let command = ConvertCommand(
+            rootDirectory: tempDir.path,
+            bundleIdPrefix: "com.test",
+            productType: "staticFramework",
+            tuistDir: nil,
+            dryRun: false,
+            verbose: false,
+            force: false
+        )
+
+        let canSkip = command.canSkipAllPackages(packagePaths: [pkg1Path, pkg2Path])
+        #expect(canSkip == false)
+    }
+
+    @Test("canSkipAllPackages returns true when all Project.swift files are newer than all Package.swift files")
+    func canSkipReturnsTrueWhenAllProjectsAreNewer() throws {
+        let tempDir = try createTempDirectory()
+        defer { cleanupTempDirectory(tempDir) }
+
+        // Create two package directories
+        let pkg1Dir = tempDir.appendingPathComponent("Pkg1")
+        let pkg2Dir = tempDir.appendingPathComponent("Pkg2")
+        try FileManager.default.createDirectory(at: pkg1Dir, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: pkg2Dir, withIntermediateDirectories: true)
+
+        // Create all Package.swift files first (older)
+        let pkg1Path = pkg1Dir.appendingPathComponent("Package.swift")
+        let pkg2Path = pkg2Dir.appendingPathComponent("Package.swift")
+        try "// Package1".write(to: pkg1Path, atomically: true, encoding: .utf8)
+        try "// Package2".write(to: pkg2Path, atomically: true, encoding: .utf8)
+
+        Thread.sleep(forTimeInterval: 0.1)
+
+        // Create all Project.swift files second (newer)
+        let proj1Path = pkg1Dir.appendingPathComponent("Project.swift")
+        let proj2Path = pkg2Dir.appendingPathComponent("Project.swift")
+        try "// Project1".write(to: proj1Path, atomically: true, encoding: .utf8)
+        try "// Project2".write(to: proj2Path, atomically: true, encoding: .utf8)
+
+        let command = ConvertCommand(
+            rootDirectory: tempDir.path,
+            bundleIdPrefix: "com.test",
+            productType: "staticFramework",
+            tuistDir: nil,
+            dryRun: false,
+            verbose: false,
+            force: false
+        )
+
+        let canSkip = command.canSkipAllPackages(packagePaths: [pkg1Path, pkg2Path])
+        #expect(canSkip == true)
+    }
+
+    @Test("canSkipAllPackages returns false for empty package list")
+    func canSkipReturnsFalseForEmptyList() throws {
+        let command = ConvertCommand(
+            rootDirectory: "/path/to/root",
+            bundleIdPrefix: "com.test",
+            productType: "staticFramework",
+            tuistDir: nil,
+            dryRun: false,
+            verbose: false,
+            force: false
+        )
+
+        let canSkip = command.canSkipAllPackages(packagePaths: [])
+        #expect(canSkip == false)
+    }
+
+    @Test("canSkipAllPackages works with single package")
+    func canSkipWorksWithSinglePackage() throws {
+        let tempDir = try createTempDirectory()
+        defer { cleanupTempDirectory(tempDir) }
+
+        // Create Package.swift first (older)
+        let packagePath = tempDir.appendingPathComponent("Package.swift")
+        try "// Package".write(to: packagePath, atomically: true, encoding: .utf8)
+
+        Thread.sleep(forTimeInterval: 0.1)
+
+        // Create Project.swift second (newer)
+        let projectPath = tempDir.appendingPathComponent("Project.swift")
+        try "// Project".write(to: projectPath, atomically: true, encoding: .utf8)
+
+        let command = ConvertCommand(
+            rootDirectory: tempDir.path,
+            bundleIdPrefix: "com.test",
+            productType: "staticFramework",
+            tuistDir: nil,
+            dryRun: false,
+            verbose: false,
+            force: false
+        )
+
+        let canSkip = command.canSkipAllPackages(packagePaths: [packagePath])
+        #expect(canSkip == true)
+    }
+
+    @Test("ConvertCommand initializes with force flag")
+    func initializesWithForceFlag() {
+        let command = ConvertCommand(
+            rootDirectory: "/path/to/root",
+            bundleIdPrefix: "com.example",
+            productType: "staticFramework",
+            tuistDir: nil,
+            dryRun: false,
+            verbose: false,
+            force: true
+        )
+
+        #expect(command.force == true)
+    }
+
+    @Test("ConvertCommand force defaults to false")
+    func forceDefaultsToFalse() {
+        let command = ConvertCommand(
+            rootDirectory: "/path/to/root",
+            bundleIdPrefix: "com.example",
+            productType: "staticFramework",
+            tuistDir: nil,
+            dryRun: false,
+            verbose: false
+        )
+
+        #expect(command.force == false)
     }
 }
