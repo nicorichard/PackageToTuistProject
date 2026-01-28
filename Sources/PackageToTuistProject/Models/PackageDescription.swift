@@ -2,6 +2,91 @@ import Foundation
 
 /// Codable types for `swift package describe --type json` output
 
+// MARK: - Swift Settings
+
+/// Represents a Swift compiler setting from Package.swift
+struct SwiftSetting: Codable, Equatable {
+    let kind: SwiftSettingKind
+    let condition: SwiftSettingCondition?
+
+    init(kind: SwiftSettingKind, condition: SwiftSettingCondition? = nil) {
+        self.kind = kind
+        self.condition = condition
+    }
+}
+
+/// The kind of Swift setting
+enum SwiftSettingKind: Codable, Equatable {
+    case enableUpcomingFeature(String)
+    case enableExperimentalFeature(String)
+    case define(String)
+    case unsafeFlags([String])
+
+    private enum CodingKeys: String, CodingKey {
+        case type
+        case value
+        case values
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let type = try container.decode(String.self, forKey: .type)
+
+        switch type {
+        case "enableUpcomingFeature":
+            let value = try container.decode(String.self, forKey: .value)
+            self = .enableUpcomingFeature(value)
+        case "enableExperimentalFeature":
+            let value = try container.decode(String.self, forKey: .value)
+            self = .enableExperimentalFeature(value)
+        case "define":
+            let value = try container.decode(String.self, forKey: .value)
+            self = .define(value)
+        case "unsafeFlags":
+            let values = try container.decode([String].self, forKey: .values)
+            self = .unsafeFlags(values)
+        default:
+            throw DecodingError.dataCorrupted(
+                DecodingError.Context(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "Unknown SwiftSettingKind type: \(type)"
+                )
+            )
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .enableUpcomingFeature(let value):
+            try container.encode("enableUpcomingFeature", forKey: .type)
+            try container.encode(value, forKey: .value)
+        case .enableExperimentalFeature(let value):
+            try container.encode("enableExperimentalFeature", forKey: .type)
+            try container.encode(value, forKey: .value)
+        case .define(let value):
+            try container.encode("define", forKey: .type)
+            try container.encode(value, forKey: .value)
+        case .unsafeFlags(let values):
+            try container.encode("unsafeFlags", forKey: .type)
+            try container.encode(values, forKey: .values)
+        }
+    }
+}
+
+/// Condition for when a Swift setting applies
+struct SwiftSettingCondition: Codable, Equatable {
+    let config: String?
+    let platformNames: [String]?
+
+    init(config: String? = nil, platformNames: [String]? = nil) {
+        self.config = config
+        self.platformNames = platformNames
+    }
+}
+
+// MARK: - Package Description
+
 struct PackageDescription: Codable {
     let name: String
     let manifestDisplayName: String?
@@ -112,6 +197,7 @@ struct PackageDescription: Codable {
         let productDependencies: [String]?
         let resources: [Resource]?
         let moduleType: String?
+        var swiftSettings: [SwiftSetting]?
 
         enum CodingKeys: String, CodingKey {
             case name
@@ -123,6 +209,7 @@ struct PackageDescription: Codable {
             case productDependencies = "product_dependencies"
             case resources
             case moduleType = "module_type"
+            case swiftSettings
         }
 
         struct Resource: Codable {

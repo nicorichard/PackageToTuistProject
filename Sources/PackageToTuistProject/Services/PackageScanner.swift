@@ -109,6 +109,7 @@ struct PackageScanner {
     }
 
     /// Load package description, using cache if valid, otherwise running `swift package describe`
+    /// Also runs `swift package dump-package` to get swiftSettings and merges the results
     func loadPackageDescription(at packagePath: URL) async throws -> PackageDescription {
         // Try cache first
         if let cached = loadCachedDescription(at: packagePath) {
@@ -118,12 +119,19 @@ struct PackageScanner {
             return cached
         }
 
-        // Cache miss - load from swift package describe
-        let description = try await loadPackageDescriptionFromSwift(at: packagePath)
+        // Cache miss - load from swift package describe and dump-package in parallel
+        async let describeTask = loadPackageDescriptionFromSwift(at: packagePath)
+        async let dumpTask = loadPackageDump(at: packagePath)
 
-        // Cache the result
+        let description = try await describeTask
+        let dumpDescription = try? await dumpTask
+
+        // Merge swiftSettings from dump into describe result
+        let mergedDescription = mergeSwiftSettings(describe: description, dump: dumpDescription)
+
+        // Cache the merged result
         do {
-            try cacheDescription(description, at: packagePath)
+            try cacheDescription(mergedDescription, at: packagePath)
             if verbose {
                 print("Cached description for: \(packagePath.deletingLastPathComponent().path)")
             }
@@ -133,7 +141,110 @@ struct PackageScanner {
             }
         }
 
-        return description
+        return mergedDescription
+    }
+
+    /// Merge swiftSettings from dump-package into describe result
+    private func mergeSwiftSettings(describe: PackageDescription, dump: DumpPackageDescription?) -> PackageDescription {
+        guard let dump = dump else { return describe }
+
+        // Build a lookup table of target name -> swift settings
+        var settingsByTarget: [String: [SwiftSetting]] = [:]
+        for dumpTarget in dump.targets {
+            if let settings = dumpTarget.settings {
+                let swiftSettings = settings.compactMap { $0.toSwiftSetting() }
+                if !swiftSettings.isEmpty {
+                    settingsByTarget[dumpTarget.name] = swiftSettings
+                }
+            }
+        }
+
+        // If no settings found, return original
+        guard !settingsByTarget.isEmpty else { return describe }
+
+        // Create new targets with swiftSettings merged in
+        let mergedTargets = describe.targets.map { target -> PackageDescription.Target in
+            var updatedTarget = target
+            updatedTarget.swiftSettings = settingsByTarget[target.name]
+            return updatedTarget
+        }
+
+        return PackageDescription(
+            name: describe.name,
+            manifestDisplayName: describe.manifestDisplayName,
+            path: describe.path,
+            platforms: describe.platforms,
+            products: describe.products,
+            targets: mergedTargets,
+            dependencies: describe.dependencies,
+            toolsVersion: describe.toolsVersion
+        )
+    }
+
+    /// Load package dump using `swift package dump-package` with timeout
+    private func loadPackageDump(at packagePath: URL) async throws -> DumpPackageDescription {
+        let packageDirectory = packagePath.deletingLastPathComponent()
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["swift", "package", "dump-package"]
+        process.currentDirectoryURL = packageDirectory
+
+        let outputPipe = Pipe()
+        let errorPipe = Pipe()
+        process.standardOutput = outputPipe
+        process.standardError = errorPipe
+
+        if verbose {
+            print("Loading package dump: \(packageDirectory.path)")
+        }
+
+        // Create tasks to read output asynchronously
+        let outputTask = Task {
+            var data = Data()
+            for try await chunk in outputPipe.fileHandleForReading.bytes {
+                data.append(chunk)
+            }
+            return data
+        }
+
+        let errorTask = Task {
+            var data = Data()
+            for try await chunk in errorPipe.fileHandleForReading.bytes {
+                data.append(chunk)
+            }
+            return data
+        }
+
+        try process.run()
+
+        // Wait for process with timeout
+        let completed = await waitForProcessWithTimeout(process: process, timeoutSeconds: timeoutSeconds)
+
+        if !completed {
+            process.terminate()
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            if process.isRunning {
+                kill(process.processIdentifier, SIGKILL)
+            }
+            outputTask.cancel()
+            errorTask.cancel()
+            throw ScannerError.timeout(packageDirectory.path, timeoutSeconds)
+        }
+
+        let outputData = try await outputTask.value
+        _ = try await errorTask.value
+
+        if process.terminationStatus != 0 {
+            throw ScannerError.packageDumpFailed(packageDirectory.path)
+        }
+
+        do {
+            let decoder = JSONDecoder()
+            return try decoder.decode(DumpPackageDescription.self, from: outputData)
+        } catch {
+            throw ScannerError.jsonDecodingFailed(packageDirectory.path, error.localizedDescription)
+        }
     }
 
     /// Load package description using `swift package describe --type json` with timeout
@@ -235,6 +346,7 @@ struct PackageScanner {
     enum ScannerError: LocalizedError {
         case cannotEnumerateDirectory(String)
         case packageDescribeFailed(String, String)
+        case packageDumpFailed(String)
         case jsonDecodingFailed(String, String)
         case timeout(String, UInt64)
 
@@ -244,6 +356,8 @@ struct PackageScanner {
                 return "Cannot enumerate directory: \(path)"
             case .packageDescribeFailed(let path, let message):
                 return "Failed to describe package at \(path): \(message)"
+            case .packageDumpFailed(let path):
+                return "Failed to dump package at \(path)"
             case .jsonDecodingFailed(let path, let message):
                 return "Failed to decode package JSON at \(path): \(message)"
             case .timeout(let path, let seconds):

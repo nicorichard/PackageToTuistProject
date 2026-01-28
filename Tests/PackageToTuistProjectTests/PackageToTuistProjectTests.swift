@@ -2804,3 +2804,583 @@ struct AllOrNothingCacheTests {
         #expect(command.force == false)
     }
 }
+
+// MARK: - SwiftSetting Tests
+
+@Suite("SwiftSetting")
+struct SwiftSettingTests {
+    @Test("SwiftSettingKind enableUpcomingFeature encodes and decodes")
+    func enableUpcomingFeatureRoundTrip() throws {
+        let setting = SwiftSetting(kind: .enableUpcomingFeature("ExistentialAny"))
+
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(setting)
+        let decoder = JSONDecoder()
+        let decoded = try decoder.decode(SwiftSetting.self, from: data)
+
+        #expect(decoded == setting)
+        #expect(decoded.kind == .enableUpcomingFeature("ExistentialAny"))
+        #expect(decoded.condition == nil)
+    }
+
+    @Test("SwiftSettingKind enableExperimentalFeature encodes and decodes")
+    func enableExperimentalFeatureRoundTrip() throws {
+        let setting = SwiftSetting(kind: .enableExperimentalFeature("StrictConcurrency"))
+
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(setting)
+        let decoder = JSONDecoder()
+        let decoded = try decoder.decode(SwiftSetting.self, from: data)
+
+        #expect(decoded == setting)
+        #expect(decoded.kind == .enableExperimentalFeature("StrictConcurrency"))
+    }
+
+    @Test("SwiftSettingKind define encodes and decodes")
+    func defineRoundTrip() throws {
+        let setting = SwiftSetting(kind: .define("DEBUG_LOGGING"))
+
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(setting)
+        let decoder = JSONDecoder()
+        let decoded = try decoder.decode(SwiftSetting.self, from: data)
+
+        #expect(decoded == setting)
+        #expect(decoded.kind == .define("DEBUG_LOGGING"))
+    }
+
+    @Test("SwiftSettingKind unsafeFlags encodes and decodes")
+    func unsafeFlagsRoundTrip() throws {
+        let setting = SwiftSetting(kind: .unsafeFlags(["-Xfrontend", "-warn-long-function-bodies=100"]))
+
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(setting)
+        let decoder = JSONDecoder()
+        let decoded = try decoder.decode(SwiftSetting.self, from: data)
+
+        #expect(decoded == setting)
+        if case .unsafeFlags(let flags) = decoded.kind {
+            #expect(flags == ["-Xfrontend", "-warn-long-function-bodies=100"])
+        } else {
+            Issue.record("Expected unsafeFlags kind")
+        }
+    }
+
+    @Test("SwiftSetting with condition encodes and decodes")
+    func settingWithConditionRoundTrip() throws {
+        let condition = SwiftSettingCondition(config: "debug", platformNames: ["ios", "macos"])
+        let setting = SwiftSetting(kind: .define("DEBUG"), condition: condition)
+
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(setting)
+        let decoder = JSONDecoder()
+        let decoded = try decoder.decode(SwiftSetting.self, from: data)
+
+        #expect(decoded == setting)
+        #expect(decoded.condition?.config == "debug")
+        #expect(decoded.condition?.platformNames == ["ios", "macos"])
+    }
+
+    @Test("SwiftSettingKind equality")
+    func kindEquality() {
+        let kind1 = SwiftSettingKind.enableUpcomingFeature("ExistentialAny")
+        let kind2 = SwiftSettingKind.enableUpcomingFeature("ExistentialAny")
+        let kind3 = SwiftSettingKind.enableUpcomingFeature("DifferentFeature")
+        let kind4 = SwiftSettingKind.define("ExistentialAny")
+
+        #expect(kind1 == kind2)
+        #expect(kind1 != kind3)
+        #expect(kind1 != kind4)
+    }
+}
+
+// MARK: - DumpPackageDescription Tests
+
+@Suite("DumpPackageDescription")
+struct DumpPackageDescriptionTests {
+    @Test("decodes dump-package JSON with enableUpcomingFeature")
+    func decodeEnableUpcomingFeature() throws {
+        let json = """
+        {
+            "name": "TestPackage",
+            "targets": [
+                {
+                    "name": "MyTarget",
+                    "settings": [
+                        {
+                            "kind": {
+                                "enableUpcomingFeature": {
+                                    "_0": "ExistentialAny"
+                                }
+                            },
+                            "tool": "swift"
+                        }
+                    ]
+                }
+            ]
+        }
+        """
+
+        let data = json.data(using: .utf8)!
+        let dump = try JSONDecoder().decode(DumpPackageDescription.self, from: data)
+
+        #expect(dump.name == "TestPackage")
+        #expect(dump.targets.count == 1)
+        #expect(dump.targets[0].name == "MyTarget")
+        #expect(dump.targets[0].settings?.count == 1)
+
+        let setting = dump.targets[0].settings?[0]
+        #expect(setting?.tool == "swift")
+        #expect(setting?.kind == .enableUpcomingFeature("ExistentialAny"))
+    }
+
+    @Test("decodes dump-package JSON with enableExperimentalFeature")
+    func decodeEnableExperimentalFeature() throws {
+        let json = """
+        {
+            "name": "TestPackage",
+            "targets": [
+                {
+                    "name": "MyTarget",
+                    "settings": [
+                        {
+                            "kind": {
+                                "enableExperimentalFeature": {
+                                    "_0": "StrictConcurrency"
+                                }
+                            },
+                            "tool": "swift"
+                        }
+                    ]
+                }
+            ]
+        }
+        """
+
+        let data = json.data(using: .utf8)!
+        let dump = try JSONDecoder().decode(DumpPackageDescription.self, from: data)
+
+        let setting = dump.targets[0].settings?[0]
+        #expect(setting?.kind == .enableExperimentalFeature("StrictConcurrency"))
+    }
+
+    @Test("decodes dump-package JSON with define")
+    func decodeDefine() throws {
+        let json = """
+        {
+            "name": "TestPackage",
+            "targets": [
+                {
+                    "name": "MyTarget",
+                    "settings": [
+                        {
+                            "kind": {
+                                "define": {
+                                    "_0": "DEBUG_LOGGING"
+                                }
+                            },
+                            "tool": "swift"
+                        }
+                    ]
+                }
+            ]
+        }
+        """
+
+        let data = json.data(using: .utf8)!
+        let dump = try JSONDecoder().decode(DumpPackageDescription.self, from: data)
+
+        let setting = dump.targets[0].settings?[0]
+        #expect(setting?.kind == .define("DEBUG_LOGGING"))
+    }
+
+    @Test("decodes dump-package JSON with unsafeFlags")
+    func decodeUnsafeFlags() throws {
+        let json = """
+        {
+            "name": "TestPackage",
+            "targets": [
+                {
+                    "name": "MyTarget",
+                    "settings": [
+                        {
+                            "kind": {
+                                "unsafeFlags": {
+                                    "_0": ["-Xfrontend", "-warn-long-function-bodies=100"]
+                                }
+                            },
+                            "tool": "swift"
+                        }
+                    ]
+                }
+            ]
+        }
+        """
+
+        let data = json.data(using: .utf8)!
+        let dump = try JSONDecoder().decode(DumpPackageDescription.self, from: data)
+
+        let setting = dump.targets[0].settings?[0]
+        #expect(setting?.kind == .unsafeFlags(["-Xfrontend", "-warn-long-function-bodies=100"]))
+    }
+
+    @Test("decodes dump-package JSON with condition")
+    func decodeWithCondition() throws {
+        let json = """
+        {
+            "name": "TestPackage",
+            "targets": [
+                {
+                    "name": "MyTarget",
+                    "settings": [
+                        {
+                            "condition": {
+                                "config": "debug",
+                                "platformNames": ["ios", "macos"]
+                            },
+                            "kind": {
+                                "define": {
+                                    "_0": "DEBUG"
+                                }
+                            },
+                            "tool": "swift"
+                        }
+                    ]
+                }
+            ]
+        }
+        """
+
+        let data = json.data(using: .utf8)!
+        let dump = try JSONDecoder().decode(DumpPackageDescription.self, from: data)
+
+        let setting = dump.targets[0].settings?[0]
+        #expect(setting?.condition?.config == "debug")
+        #expect(setting?.condition?.platformNames == ["ios", "macos"])
+    }
+
+    @Test("converts DumpSetting to SwiftSetting")
+    func convertToSwiftSetting() throws {
+        let json = """
+        {
+            "name": "TestPackage",
+            "targets": [
+                {
+                    "name": "MyTarget",
+                    "settings": [
+                        {
+                            "kind": {
+                                "enableUpcomingFeature": {
+                                    "_0": "ExistentialAny"
+                                }
+                            },
+                            "tool": "swift"
+                        }
+                    ]
+                }
+            ]
+        }
+        """
+
+        let data = json.data(using: .utf8)!
+        let dump = try JSONDecoder().decode(DumpPackageDescription.self, from: data)
+
+        let dumpSetting = dump.targets[0].settings![0]
+        let swiftSetting = dumpSetting.toSwiftSetting()
+
+        #expect(swiftSetting != nil)
+        #expect(swiftSetting?.kind == .enableUpcomingFeature("ExistentialAny"))
+        #expect(swiftSetting?.condition == nil)
+    }
+
+    @Test("filters out non-swift tool settings")
+    func filtersNonSwiftSettings() throws {
+        let json = """
+        {
+            "name": "TestPackage",
+            "targets": [
+                {
+                    "name": "MyTarget",
+                    "settings": [
+                        {
+                            "kind": {
+                                "define": {
+                                    "_0": "SOME_DEFINE"
+                                }
+                            },
+                            "tool": "c"
+                        }
+                    ]
+                }
+            ]
+        }
+        """
+
+        let data = json.data(using: .utf8)!
+        let dump = try JSONDecoder().decode(DumpPackageDescription.self, from: data)
+
+        let dumpSetting = dump.targets[0].settings![0]
+        let swiftSetting = dumpSetting.toSwiftSetting()
+
+        #expect(swiftSetting == nil)
+    }
+
+    @Test("decodes multiple settings per target")
+    func decodeMultipleSettings() throws {
+        let json = """
+        {
+            "name": "TestPackage",
+            "targets": [
+                {
+                    "name": "MyTarget",
+                    "settings": [
+                        {
+                            "kind": {
+                                "enableUpcomingFeature": {
+                                    "_0": "ExistentialAny"
+                                }
+                            },
+                            "tool": "swift"
+                        },
+                        {
+                            "kind": {
+                                "enableExperimentalFeature": {
+                                    "_0": "StrictConcurrency"
+                                }
+                            },
+                            "tool": "swift"
+                        },
+                        {
+                            "kind": {
+                                "define": {
+                                    "_0": "DEBUG_LOGGING"
+                                }
+                            },
+                            "tool": "swift"
+                        }
+                    ]
+                }
+            ]
+        }
+        """
+
+        let data = json.data(using: .utf8)!
+        let dump = try JSONDecoder().decode(DumpPackageDescription.self, from: data)
+
+        #expect(dump.targets[0].settings?.count == 3)
+
+        let swiftSettings = dump.targets[0].settings!.compactMap { $0.toSwiftSetting() }
+        #expect(swiftSettings.count == 3)
+        #expect(swiftSettings[0].kind == .enableUpcomingFeature("ExistentialAny"))
+        #expect(swiftSettings[1].kind == .enableExperimentalFeature("StrictConcurrency"))
+        #expect(swiftSettings[2].kind == .define("DEBUG_LOGGING"))
+    }
+}
+
+// MARK: - ProjectWriter SwiftSettings Tests
+
+@Suite("ProjectWriter SwiftSettings")
+struct ProjectWriterSwiftSettingsTests {
+    @Test("generates OTHER_SWIFT_FLAGS without settings")
+    func generateFlagsWithoutSettings() {
+        let target = TuistTarget(
+            name: "MyTarget",
+            product: .staticFramework,
+            bundleId: "com.example.MyTarget",
+            sourcesPath: "Sources/MyTarget",
+            dependencies: [],
+            destinations: ".iOS",
+            deploymentTargets: ".iOS(\"15.0\")",
+            packageName: "MyPackage",
+            needsTestingSearchPaths: false,
+            swiftSettings: nil
+        )
+
+        let writer = ProjectWriter()
+        let output = writer.generate(project: TuistProject(
+            name: "MyPackage",
+            path: "/path/to/package",
+            targets: [target]
+        ))
+
+        #expect(output.contains("\"OTHER_SWIFT_FLAGS\": [\"-package-name\", \"MyPackage\"]"))
+    }
+
+    @Test("generates OTHER_SWIFT_FLAGS with enableUpcomingFeature")
+    func generateFlagsWithUpcomingFeature() {
+        let target = TuistTarget(
+            name: "MyTarget",
+            product: .staticFramework,
+            bundleId: "com.example.MyTarget",
+            sourcesPath: "Sources/MyTarget",
+            dependencies: [],
+            destinations: ".iOS",
+            deploymentTargets: ".iOS(\"15.0\")",
+            packageName: "MyPackage",
+            needsTestingSearchPaths: false,
+            swiftSettings: [
+                SwiftSetting(kind: .enableUpcomingFeature("ExistentialAny"))
+            ]
+        )
+
+        let writer = ProjectWriter()
+        let output = writer.generate(project: TuistProject(
+            name: "MyPackage",
+            path: "/path/to/package",
+            targets: [target]
+        ))
+
+        #expect(output.contains("\"-enable-upcoming-feature\""))
+        #expect(output.contains("\"ExistentialAny\""))
+    }
+
+    @Test("generates OTHER_SWIFT_FLAGS with enableExperimentalFeature")
+    func generateFlagsWithExperimentalFeature() {
+        let target = TuistTarget(
+            name: "MyTarget",
+            product: .staticFramework,
+            bundleId: "com.example.MyTarget",
+            sourcesPath: "Sources/MyTarget",
+            dependencies: [],
+            destinations: ".iOS",
+            deploymentTargets: ".iOS(\"15.0\")",
+            packageName: "MyPackage",
+            needsTestingSearchPaths: false,
+            swiftSettings: [
+                SwiftSetting(kind: .enableExperimentalFeature("StrictConcurrency"))
+            ]
+        )
+
+        let writer = ProjectWriter()
+        let output = writer.generate(project: TuistProject(
+            name: "MyPackage",
+            path: "/path/to/package",
+            targets: [target]
+        ))
+
+        #expect(output.contains("\"-enable-experimental-feature\""))
+        #expect(output.contains("\"StrictConcurrency\""))
+    }
+
+    @Test("generates OTHER_SWIFT_FLAGS with define")
+    func generateFlagsWithDefine() {
+        let target = TuistTarget(
+            name: "MyTarget",
+            product: .staticFramework,
+            bundleId: "com.example.MyTarget",
+            sourcesPath: "Sources/MyTarget",
+            dependencies: [],
+            destinations: ".iOS",
+            deploymentTargets: ".iOS(\"15.0\")",
+            packageName: "MyPackage",
+            needsTestingSearchPaths: false,
+            swiftSettings: [
+                SwiftSetting(kind: .define("DEBUG_LOGGING"))
+            ]
+        )
+
+        let writer = ProjectWriter()
+        let output = writer.generate(project: TuistProject(
+            name: "MyPackage",
+            path: "/path/to/package",
+            targets: [target]
+        ))
+
+        #expect(output.contains("\"-D\""))
+        #expect(output.contains("\"DEBUG_LOGGING\""))
+    }
+
+    @Test("generates OTHER_SWIFT_FLAGS with unsafeFlags")
+    func generateFlagsWithUnsafeFlags() {
+        let target = TuistTarget(
+            name: "MyTarget",
+            product: .staticFramework,
+            bundleId: "com.example.MyTarget",
+            sourcesPath: "Sources/MyTarget",
+            dependencies: [],
+            destinations: ".iOS",
+            deploymentTargets: ".iOS(\"15.0\")",
+            packageName: "MyPackage",
+            needsTestingSearchPaths: false,
+            swiftSettings: [
+                SwiftSetting(kind: .unsafeFlags(["-Xfrontend", "-warn-long-function-bodies=100"]))
+            ]
+        )
+
+        let writer = ProjectWriter()
+        let output = writer.generate(project: TuistProject(
+            name: "MyPackage",
+            path: "/path/to/package",
+            targets: [target]
+        ))
+
+        #expect(output.contains("\"-Xfrontend\""))
+        #expect(output.contains("\"-warn-long-function-bodies=100\""))
+    }
+
+    @Test("generates OTHER_SWIFT_FLAGS with multiple settings")
+    func generateFlagsWithMultipleSettings() {
+        let target = TuistTarget(
+            name: "MyTarget",
+            product: .staticFramework,
+            bundleId: "com.example.MyTarget",
+            sourcesPath: "Sources/MyTarget",
+            dependencies: [],
+            destinations: ".iOS",
+            deploymentTargets: ".iOS(\"15.0\")",
+            packageName: "MyPackage",
+            needsTestingSearchPaths: false,
+            swiftSettings: [
+                SwiftSetting(kind: .enableUpcomingFeature("ExistentialAny")),
+                SwiftSetting(kind: .enableExperimentalFeature("StrictConcurrency")),
+                SwiftSetting(kind: .define("DEBUG_LOGGING"))
+            ]
+        )
+
+        let writer = ProjectWriter()
+        let output = writer.generate(project: TuistProject(
+            name: "MyPackage",
+            path: "/path/to/package",
+            targets: [target]
+        ))
+
+        // Verify all settings are present
+        #expect(output.contains("\"-enable-upcoming-feature\""))
+        #expect(output.contains("\"ExistentialAny\""))
+        #expect(output.contains("\"-enable-experimental-feature\""))
+        #expect(output.contains("\"StrictConcurrency\""))
+        #expect(output.contains("\"-D\""))
+        #expect(output.contains("\"DEBUG_LOGGING\""))
+
+        // Verify package-name is still first
+        #expect(output.contains("\"-package-name\", \"MyPackage\""))
+    }
+
+    @Test("OTHER_SWIFT_FLAGS format is correct array")
+    func flagsArrayFormat() {
+        let target = TuistTarget(
+            name: "MyTarget",
+            product: .staticFramework,
+            bundleId: "com.example.MyTarget",
+            sourcesPath: "Sources/MyTarget",
+            dependencies: [],
+            destinations: ".iOS",
+            deploymentTargets: ".iOS(\"15.0\")",
+            packageName: "MyPackage",
+            needsTestingSearchPaths: false,
+            swiftSettings: [
+                SwiftSetting(kind: .enableUpcomingFeature("ExistentialAny"))
+            ]
+        )
+
+        let writer = ProjectWriter()
+        let output = writer.generate(project: TuistProject(
+            name: "MyPackage",
+            path: "/path/to/package",
+            targets: [target]
+        ))
+
+        // Check the full OTHER_SWIFT_FLAGS line
+        #expect(output.contains("\"OTHER_SWIFT_FLAGS\": [\"-package-name\", \"MyPackage\", \"-enable-upcoming-feature\", \"ExistentialAny\"]"))
+    }
+}

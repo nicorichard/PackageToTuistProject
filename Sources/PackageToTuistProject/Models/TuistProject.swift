@@ -20,6 +20,32 @@ struct TuistTarget {
     /// Whether this target needs ENABLE_TESTING_SEARCH_PATHS=YES
     /// True for test targets or targets that import XCTest/Testing/StoreKitTest
     let needsTestingSearchPaths: Bool
+    /// Swift compiler settings from Package.swift (enableUpcomingFeature, define, etc.)
+    let swiftSettings: [SwiftSetting]?
+
+    init(
+        name: String,
+        product: ProductType,
+        bundleId: String,
+        sourcesPath: String,
+        dependencies: [TuistDependency],
+        destinations: String,
+        deploymentTargets: String?,
+        packageName: String,
+        needsTestingSearchPaths: Bool,
+        swiftSettings: [SwiftSetting]? = nil
+    ) {
+        self.name = name
+        self.product = product
+        self.bundleId = bundleId
+        self.sourcesPath = sourcesPath
+        self.dependencies = dependencies
+        self.destinations = destinations
+        self.deploymentTargets = deploymentTargets
+        self.packageName = packageName
+        self.needsTestingSearchPaths = needsTestingSearchPaths
+        self.swiftSettings = swiftSettings
+    }
 
     enum ProductType: String {
         case staticFramework

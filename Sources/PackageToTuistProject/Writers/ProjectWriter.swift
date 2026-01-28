@@ -60,8 +60,9 @@ struct ProjectWriter {
 
         // Add settings with -package-name flag for package access level support
         // and STRING_CATALOG_GENERATE_SYMBOLS which is the default for Swift packages
+        let swiftFlags = generateSwiftFlags(packageName: target.packageName, swiftSettings: target.swiftSettings)
         var settingsPairs: [String] = [
-            "\"OTHER_SWIFT_FLAGS\": [\"-package-name\", \"\(target.packageName)\"]",
+            "\"OTHER_SWIFT_FLAGS\": \(swiftFlags)",
             "\"STRING_CATALOG_GENERATE_SYMBOLS\": \"YES\"",
             "\"SWIFT_PACKAGE_NAME\": \"\(target.packageName)\"",
             "\"SWIFT_ACTIVE_COMPILATION_CONDITIONS\": \"$(inherited) SWIFT_PACKAGE\""
@@ -86,6 +87,34 @@ struct ProjectWriter {
     private func generateResourcesGlobs(for sourcesPath: String) -> String {
         let patterns = Self.spmResourcePatterns.map { "\"\(sourcesPath)/\($0)\"" }
         return "[\(patterns.joined(separator: ", "))]"
+    }
+
+    /// Generate OTHER_SWIFT_FLAGS array including package name and swift settings
+    private func generateSwiftFlags(packageName: String, swiftSettings: [SwiftSetting]?) -> String {
+        var flags: [String] = ["-package-name", packageName]
+
+        if let settings = swiftSettings {
+            for setting in settings {
+                // Note: Conditions (debug/release, platform) are ignored for Phase 1
+                // Settings are applied unconditionally
+                switch setting.kind {
+                case .enableUpcomingFeature(let feature):
+                    flags.append("-enable-upcoming-feature")
+                    flags.append(feature)
+                case .enableExperimentalFeature(let feature):
+                    flags.append("-enable-experimental-feature")
+                    flags.append(feature)
+                case .define(let macro):
+                    flags.append("-D")
+                    flags.append(macro)
+                case .unsafeFlags(let customFlags):
+                    flags.append(contentsOf: customFlags)
+                }
+            }
+        }
+
+        let quotedFlags = flags.map { "\"\($0)\"" }
+        return "[\(quotedFlags.joined(separator: ", "))]"
     }
 
     /// Write Project.swift to disk

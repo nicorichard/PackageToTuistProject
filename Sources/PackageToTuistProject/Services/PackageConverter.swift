@@ -189,7 +189,8 @@ struct PackageConverter {
             destinations: destinations,
             deploymentTargets: deploymentTargets,
             packageName: package.name,
-            needsTestingSearchPaths: needsTestingSearchPaths
+            needsTestingSearchPaths: needsTestingSearchPaths,
+            swiftSettings: target.swiftSettings
         )
     }
 
