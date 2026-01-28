@@ -54,8 +54,12 @@ struct ProjectWriter {
         arguments.append(("resources", generateResourcesGlobs(for: target.sourcesPath)))
 
         if !target.dependencies.isEmpty {
-            let depsCode = target.dependencies.map { $0.swiftCode }
-            arguments.append(("dependencies", "[\n                \(depsCode.joined(separator: ",\n                "))\n            ]"))
+            let depsCode = target.dependencies.map { $0.swiftCode }.joined(separator: ",\n")
+            arguments.append(("dependencies", """
+                [
+                    \(indented: depsCode)
+                ]
+                """))
         }
 
         // Add settings with -package-name flag for package access level support
@@ -70,7 +74,12 @@ struct ProjectWriter {
         if target.needsTestingSearchPaths {
             settingsPairs.append("\"ENABLE_TESTING_SEARCH_PATHS\": \"YES\"")
         }
-        arguments.append(("settings", ".settings(base: [\(settingsPairs.joined(separator: ", "))])"))
+        let settingsCode = settingsPairs.joined(separator: ",\n")
+        arguments.append(("settings", """
+            .settings(base: [
+                \(indented: settingsCode)
+            ])
+            """))
 
         // Single place where commas are added - join all arguments
         let argumentsCode = arguments
@@ -85,8 +94,12 @@ struct ProjectWriter {
     }
 
     private func generateResourcesGlobs(for sourcesPath: String) -> String {
-        let patterns = Self.spmResourcePatterns.map { "\"\(sourcesPath)/\($0)\"" }
-        return "[\(patterns.joined(separator: ", "))]"
+        let patterns = Self.spmResourcePatterns.map { "\"\(sourcesPath)/\($0)\"" }.joined(separator: ",\n")
+        return """
+            [
+                \(indented: patterns)
+            ]
+            """
     }
 
     /// Generate OTHER_SWIFT_FLAGS array including package name and swift settings
@@ -113,8 +126,12 @@ struct ProjectWriter {
             }
         }
 
-        let quotedFlags = flags.map { "\"\($0)\"" }
-        return "[\(quotedFlags.joined(separator: ", "))]"
+        let quotedFlags = flags.map { "\"\($0)\"" }.joined(separator: ",\n")
+        return """
+            [
+                \(indented: quotedFlags)
+            ]
+            """
     }
 
     /// Write Project.swift to disk

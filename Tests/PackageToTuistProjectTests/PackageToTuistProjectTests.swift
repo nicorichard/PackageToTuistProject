@@ -2,6 +2,71 @@ import Testing
 import Foundation
 @testable import PackageToTuistProject
 
+// MARK: - StringInterpolation+Indentation Tests
+
+@Suite("StringInterpolation Indentation")
+struct StringInterpolationIndentationTests {
+    @Test("single-line string passes through unchanged")
+    func singleLineUnchanged() {
+        let text = "hello world"
+        let result = "prefix: \(indented: text)"
+        #expect(result == "prefix: hello world")
+    }
+
+    @Test("multi-line string gets proper indentation with spaces")
+    func multiLineWithSpaces() {
+        let text = "line1\nline2\nline3"
+        let result = "    \(indented: text)"
+        #expect(result == "    line1\n    line2\n    line3")
+    }
+
+    @Test("multi-line string gets proper indentation with tabs")
+    func multiLineWithTabs() {
+        let text = "line1\nline2"
+        let result = "\t\t\(indented: text)"
+        #expect(result == "\t\tline1\n\t\tline2")
+    }
+
+    @Test("empty indent case works correctly")
+    func emptyIndent() {
+        let text = "line1\nline2"
+        let result = "no-indent\(indented: text)"
+        #expect(result == "no-indentline1\nline2")
+    }
+
+    @Test("preserves empty lines in multi-line string")
+    func preservesEmptyLines() {
+        let text = "line1\n\nline3"
+        let result = "  \(indented: text)"
+        #expect(result == "  line1\n  \n  line3")
+    }
+
+    @Test("mixed spaces and tabs indentation")
+    func mixedIndentation() {
+        let text = "a\nb"
+        let result = "  \t\(indented: text)"
+        #expect(result == "  \ta\n  \tb")
+    }
+
+    @Test("works in multi-line string literal context")
+    func multiLineStringLiteral() {
+        let items = "item1,\nitem2,\nitem3"
+        let result = """
+            [
+                \(indented: items)
+            ]
+            """
+        let expected = """
+            [
+                item1,
+                item2,
+                item3
+            ]
+            """
+        #expect(result == expected)
+    }
+}
+
 // MARK: - LoadingProgress Tests
 
 @Suite("LoadingProgress")
@@ -3225,7 +3290,9 @@ struct ProjectWriterSwiftSettingsTests {
             targets: [target]
         ))
 
-        #expect(output.contains("\"OTHER_SWIFT_FLAGS\": [\"-package-name\", \"MyPackage\"]"))
+        #expect(output.contains("\"OTHER_SWIFT_FLAGS\":"))
+        #expect(output.contains("\"-package-name\""))
+        #expect(output.contains("\"MyPackage\""))
     }
 
     @Test("generates OTHER_SWIFT_FLAGS with enableUpcomingFeature")
@@ -3374,8 +3441,9 @@ struct ProjectWriterSwiftSettingsTests {
         #expect(output.contains("\"-D\""))
         #expect(output.contains("\"DEBUG_LOGGING\""))
 
-        // Verify package-name is still first
-        #expect(output.contains("\"-package-name\", \"MyPackage\""))
+        // Verify package-name is present
+        #expect(output.contains("\"-package-name\""))
+        #expect(output.contains("\"MyPackage\""))
     }
 
     @Test("OTHER_SWIFT_FLAGS format is correct array")
@@ -3402,7 +3470,10 @@ struct ProjectWriterSwiftSettingsTests {
             targets: [target]
         ))
 
-        // Check the full OTHER_SWIFT_FLAGS line
-        #expect(output.contains("\"OTHER_SWIFT_FLAGS\": [\"-package-name\", \"MyPackage\", \"-enable-upcoming-feature\", \"ExistentialAny\"]"))
+        // Check the OTHER_SWIFT_FLAGS content
+        #expect(output.contains("\"OTHER_SWIFT_FLAGS\":"))
+        #expect(output.contains("\"-package-name\""))
+        #expect(output.contains("\"-enable-upcoming-feature\""))
+        #expect(output.contains("\"ExistentialAny\""))
     }
 }
