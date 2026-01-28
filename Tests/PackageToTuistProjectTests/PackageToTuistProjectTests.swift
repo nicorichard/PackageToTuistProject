@@ -1047,8 +1047,8 @@ struct PackageConverterTests {
         #expect(project.targets[0].product == .unitTests)
     }
 
-    @Test("throws error when platforms is nil")
-    func throwsOnMissingPlatforms() throws {
+    @Test("uses default platforms when platforms is nil")
+    func usesDefaultPlatformsWhenNil() throws {
         let converter = PackageConverter(
             bundleIdPrefix: "com.example",
             productType: "staticFramework"
@@ -1071,18 +1071,31 @@ struct PackageConverterTests {
         )
 
         let collector = DependencyCollector()
-        #expect(throws: PackageConversionError.self) {
-            _ = try converter.convert(
-                package: package,
-                packagePath: URL(fileURLWithPath: "/path/to/Package.swift"),
-                collector: collector,
-                allDescriptions: [:]
-            )
-        }
+        let project = try converter.convert(
+            package: package,
+            packagePath: URL(fileURLWithPath: "/path/to/Package.swift"),
+            collector: collector,
+            allDescriptions: [:]
+        )
+
+        // Should have all 5 default platforms
+        let target = project.targets[0]
+        #expect(target.destinations.contains(".iOS"))
+        #expect(target.destinations.contains(".macOS"))
+        #expect(target.destinations.contains(".tvOS"))
+        #expect(target.destinations.contains(".watchOS"))
+        #expect(target.destinations.contains(".visionOS"))
+
+        // Should have multiplatform deployment targets with SPM safe minimums
+        #expect(target.deploymentTargets?.contains("iOS: \"12.0\"") == true)
+        #expect(target.deploymentTargets?.contains("macOS: \"10.13\"") == true)
+        #expect(target.deploymentTargets?.contains("tvOS: \"12.0\"") == true)
+        #expect(target.deploymentTargets?.contains("watchOS: \"4.0\"") == true)
+        #expect(target.deploymentTargets?.contains("visionOS: \"1.0\"") == true)
     }
 
-    @Test("throws error when platforms is empty array")
-    func throwsOnEmptyPlatforms() throws {
+    @Test("uses default platforms when platforms is empty array")
+    func usesDefaultPlatformsWhenEmpty() throws {
         let converter = PackageConverter(
             bundleIdPrefix: "com.example",
             productType: "staticFramework"
@@ -1106,25 +1119,34 @@ struct PackageConverterTests {
         )
 
         let collector = DependencyCollector()
-        #expect(throws: PackageConversionError.self) {
-            _ = try converter.convert(
-                package: package,
-                packagePath: URL(fileURLWithPath: "/path/to/Package.swift"),
-                collector: collector,
-                allDescriptions: [:]
-            )
-        }
+        let project = try converter.convert(
+            package: package,
+            packagePath: URL(fileURLWithPath: "/path/to/Package.swift"),
+            collector: collector,
+            allDescriptions: [:]
+        )
+
+        // Should have all 5 default platforms
+        let target = project.targets[0]
+        #expect(target.destinations.contains(".iOS"))
+        #expect(target.destinations.contains(".macOS"))
+        #expect(target.destinations.contains(".tvOS"))
+        #expect(target.destinations.contains(".watchOS"))
+        #expect(target.destinations.contains(".visionOS"))
     }
 
-    @Test("error message contains package name and guidance")
-    func errorMessageIsHelpful() throws {
-        let error = PackageConversionError.missingPlatforms(package: "TestPackage")
-        let description = error.description
+    @Test("default platforms match SPM safe minimums")
+    func defaultPlatformsMatchSPMSafeMinimums() throws {
+        // Verify that the static default platforms are exactly the SPM safe minimums
+        let defaults = PackageConverter.defaultPlatforms
+        #expect(defaults.count == 5)
 
-        #expect(description.contains("TestPackage"))
-        #expect(description.contains("platforms"))
-        #expect(description.contains(".iOS"))
-        #expect(description.contains(".macOS"))
+        let byName = Dictionary(uniqueKeysWithValues: defaults.map { ($0.name.lowercased(), $0.version) })
+        #expect(byName["ios"] == "12.0")
+        #expect(byName["macos"] == "10.13")
+        #expect(byName["tvos"] == "12.0")
+        #expect(byName["watchos"] == "4.0")
+        #expect(byName["visionos"] == "1.0")
     }
 
     @Test("uses correct destination for macOS platform")

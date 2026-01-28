@@ -3,7 +3,6 @@ import Foundation
 /// Errors that can occur during package conversion
 enum PackageConversionError: Error, CustomStringConvertible {
     case unresolvableProductDependency(product: String, package: String, matchedIdentity: String)
-    case missingPlatforms(package: String)
 
     var description: String {
         switch self {
@@ -11,29 +10,22 @@ enum PackageConversionError: Error, CustomStringConvertible {
             return "Cannot resolve targets for product '\(product)' in package '\(package)'. " +
                    "The dependency matched local package '\(matchedIdentity)' but no targets could be found. " +
                    "Ensure the product name in your Package.swift dependency matches an actual product in the target package."
-        case .missingPlatforms(let package):
-            return """
-                Package '\(package)' does not specify any platforms.
-
-                Tuist requires explicit deployment targets, so packages must declare their supported platforms.
-
-                Add a platforms declaration to your Package.swift, for example:
-
-                    let package = Package(
-                        name: "\(package)",
-                        platforms: [
-                            .iOS(.v15),
-                            .macOS(.v12)
-                        ],
-                        ...
-                    )
-                """
         }
     }
 }
 
 /// Converts SPM package descriptions to Tuist project representations
 struct PackageConverter {
+    /// SPM "safe minimum" platforms used when a package doesn't declare any.
+    /// See: https://github.com/swiftlang/swift-package-manager/blob/main/Sources/PackageModel/Platform.swift#L40
+    static let defaultPlatforms: [PackageDescription.Platform] = [
+        .init(name: "ios", version: "12.0"),
+        .init(name: "macos", version: "10.13"),
+        .init(name: "tvos", version: "12.0"),
+        .init(name: "watchos", version: "4.0"),
+        .init(name: "visionos", version: "1.0"),
+    ]
+
     let bundleIdPrefix: String
     let defaultProductType: TuistTarget.ProductType
     let verbose: Bool
@@ -55,10 +47,10 @@ struct PackageConverter {
         collector: DependencyCollector,
         allDescriptions: [String: PackageDescription]
     ) throws -> TuistProject {
-        // Validate that platforms are specified
-        guard let platforms = package.platforms, !platforms.isEmpty else {
-            throw PackageConversionError.missingPlatforms(package: package.name)
-        }
+        // Use package platforms if specified, otherwise fall back to SPM safe minimums
+        let platforms = (package.platforms?.isEmpty == false)
+            ? package.platforms!
+            : Self.defaultPlatforms
 
         let packageDir = packagePath.deletingLastPathComponent()
 
