@@ -3477,3 +3477,274 @@ struct ProjectWriterSwiftSettingsTests {
         #expect(output.contains("\"ExistentialAny\""))
     }
 }
+
+// MARK: - TuistPackageValidator Tests
+
+@Suite("TuistPackageValidator")
+struct TuistPackageValidatorTests {
+
+    @Test("generates correct dependency line for range requirement")
+    func generatesDependencyLineForRange() {
+        let validator = TuistPackageValidator()
+        let dep = ExternalDependency(
+            identity: "swift-argument-parser",
+            url: "https://github.com/apple/swift-argument-parser.git",
+            requirement: .range(from: "1.0.0", to: "2.0.0")
+        )
+
+        let line = validator.generateDependencyLine(for: dep)
+
+        #expect(line == #".package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.0.0")"#)
+    }
+
+    @Test("generates correct dependency line for exact requirement")
+    func generatesDependencyLineForExact() {
+        let validator = TuistPackageValidator()
+        let dep = ExternalDependency(
+            identity: "alamofire",
+            url: "https://github.com/Alamofire/Alamofire.git",
+            requirement: .exact("5.6.4")
+        )
+
+        let line = validator.generateDependencyLine(for: dep)
+
+        #expect(line == #".package(url: "https://github.com/Alamofire/Alamofire.git", exact: "5.6.4")"#)
+    }
+
+    @Test("generates correct dependency line for branch requirement")
+    func generatesDependencyLineForBranch() {
+        let validator = TuistPackageValidator()
+        let dep = ExternalDependency(
+            identity: "test-package",
+            url: "https://github.com/example/test.git",
+            requirement: .branch("main")
+        )
+
+        let line = validator.generateDependencyLine(for: dep)
+
+        #expect(line == #".package(url: "https://github.com/example/test.git", branch: "main")"#)
+    }
+
+    @Test("generates correct dependency line for revision requirement")
+    func generatesDependencyLineForRevision() {
+        let validator = TuistPackageValidator()
+        let dep = ExternalDependency(
+            identity: "test-package",
+            url: "https://github.com/example/test.git",
+            requirement: .revision("abc123def456")
+        )
+
+        let line = validator.generateDependencyLine(for: dep)
+
+        #expect(line == #".package(url: "https://github.com/example/test.git", revision: "abc123def456")"#)
+    }
+
+    @Test("returns all dependencies as missing when no Package.swift exists")
+    func returnsAllMissingWhenNoPackageSwift() async throws {
+        let validator = TuistPackageValidator()
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let deps = [
+            ExternalDependency(
+                identity: "test",
+                url: "https://github.com/example/test.git",
+                requirement: .range(from: "1.0.0", to: "2.0.0")
+            )
+        ]
+
+        let result = await validator.validate(
+            dependencies: deps,
+            rootDirectory: tempDir,
+            customTuistDir: nil
+        )
+
+        #expect(result.missingDependencies.count == 1)
+        #expect(result.mismatchedDependencies.isEmpty)
+    }
+
+    @Test("printWarnings outputs nothing when no issues")
+    func printWarningsNoIssues() {
+        let validator = TuistPackageValidator()
+        let result = TuistPackageValidator.ValidationResult(
+            missingDependencies: [],
+            mismatchedDependencies: []
+        )
+
+        // This should not crash and should output nothing
+        validator.printWarnings(result: result)
+    }
+
+    @Test("versionString returns correct value for range")
+    func versionStringForRange() {
+        let req = ExternalDependency.DependencyRequirement.range(from: "1.0.0", to: "2.0.0")
+        #expect(req.versionString == "1.0.0")
+    }
+
+    @Test("versionString returns correct value for exact")
+    func versionStringForExact() {
+        let req = ExternalDependency.DependencyRequirement.exact("5.6.4")
+        #expect(req.versionString == "5.6.4")
+    }
+
+    @Test("versionString returns correct value for branch")
+    func versionStringForBranch() {
+        let req = ExternalDependency.DependencyRequirement.branch("main")
+        #expect(req.versionString == "main")
+    }
+
+    @Test("versionString returns correct value for revision")
+    func versionStringForRevision() {
+        let req = ExternalDependency.DependencyRequirement.revision("abc123")
+        #expect(req.versionString == "abc123")
+    }
+}
+
+// MARK: - PackageDescriptionLoader Tests
+
+@Suite("PackageDescriptionLoader")
+struct PackageDescriptionLoaderTests {
+
+    @Test("cacheFileName is correct")
+    func cacheFileNameIsCorrect() {
+        #expect(PackageDescriptionLoader.cacheFileName == ".package-description.json")
+    }
+
+    @Test("initializes with default values")
+    func initializesWithDefaults() {
+        let loader = PackageDescriptionLoader()
+        #expect(loader.verbose == false)
+    }
+
+    @Test("initializes with custom values")
+    func initializesWithCustomValues() {
+        let loader = PackageDescriptionLoader(verbose: true, timeoutSeconds: 60)
+        #expect(loader.verbose == true)
+    }
+
+    @Test("loadCachedDescription returns nil when no cache file exists")
+    func loadCachedDescriptionReturnsNilWhenNoCacheFile() throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        // Create a Package.swift file but no cache
+        let packagePath = tempDir.appendingPathComponent("Package.swift")
+        try "// swift-tools-version: 5.9".write(to: packagePath, atomically: true, encoding: .utf8)
+
+        let loader = PackageDescriptionLoader()
+        let result = loader.loadCachedDescription(at: packagePath)
+
+        #expect(result == nil)
+    }
+
+    @Test("loadCachedDescription returns nil when cache is older than Package.swift")
+    func loadCachedDescriptionReturnsNilWhenCacheStale() throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        // Create cache file first (will be older)
+        let cacheFile = tempDir.appendingPathComponent(PackageDescriptionLoader.cacheFileName)
+        let cacheJSON = """
+        {
+            "name": "TestPackage",
+            "path": "/path",
+            "products": [],
+            "targets": []
+        }
+        """
+        try cacheJSON.write(to: cacheFile, atomically: true, encoding: .utf8)
+
+        // Sleep briefly to ensure different timestamps
+        Thread.sleep(forTimeInterval: 0.1)
+
+        // Create Package.swift (will be newer)
+        let packagePath = tempDir.appendingPathComponent("Package.swift")
+        try "// swift-tools-version: 5.9".write(to: packagePath, atomically: true, encoding: .utf8)
+
+        let loader = PackageDescriptionLoader()
+        let result = loader.loadCachedDescription(at: packagePath)
+
+        #expect(result == nil)
+    }
+
+    @Test("loadCachedDescription returns cached data when cache is valid")
+    func loadCachedDescriptionReturnsDataWhenValid() throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        // Create Package.swift first (will be older)
+        let packagePath = tempDir.appendingPathComponent("Package.swift")
+        try "// swift-tools-version: 5.9".write(to: packagePath, atomically: true, encoding: .utf8)
+
+        // Sleep briefly to ensure different timestamps
+        Thread.sleep(forTimeInterval: 0.1)
+
+        // Create cache file (will be newer)
+        let cacheFile = tempDir.appendingPathComponent(PackageDescriptionLoader.cacheFileName)
+        let cacheJSON = """
+        {
+            "name": "TestPackage",
+            "path": "/path",
+            "products": [],
+            "targets": []
+        }
+        """
+        try cacheJSON.write(to: cacheFile, atomically: true, encoding: .utf8)
+
+        let loader = PackageDescriptionLoader()
+        let result = loader.loadCachedDescription(at: packagePath)
+
+        #expect(result != nil)
+        #expect(result?.name == "TestPackage")
+    }
+
+    @Test("cacheDescription writes valid JSON")
+    func cacheDescriptionWritesValidJSON() throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let packagePath = tempDir.appendingPathComponent("Package.swift")
+        try "// swift-tools-version: 5.9".write(to: packagePath, atomically: true, encoding: .utf8)
+
+        let description = PackageDescription(
+            name: "CachedPackage",
+            manifestDisplayName: nil,
+            path: tempDir.path,
+            platforms: nil,
+            products: [],
+            targets: [],
+            dependencies: nil,
+            toolsVersion: "5.9"
+        )
+
+        let loader = PackageDescriptionLoader()
+        try loader.cacheDescription(description, at: packagePath)
+
+        // Verify the cache file was created
+        let cacheFile = tempDir.appendingPathComponent(PackageDescriptionLoader.cacheFileName)
+        #expect(FileManager.default.fileExists(atPath: cacheFile.path))
+
+        // Verify we can read it back
+        let data = try Data(contentsOf: cacheFile)
+        let decoded = try JSONDecoder().decode(PackageDescription.self, from: data)
+        #expect(decoded.name == "CachedPackage")
+    }
+
+    @Test("LoaderError has correct descriptions")
+    func loaderErrorDescriptions() {
+        let timeoutError = PackageDescriptionLoader.LoaderError.timeout("/path/to/package", 30)
+        #expect(timeoutError.errorDescription?.contains("Timed out") == true)
+        #expect(timeoutError.errorDescription?.contains("30") == true)
+
+        let describeError = PackageDescriptionLoader.LoaderError.packageDescribeFailed("/path", "some error")
+        #expect(describeError.errorDescription?.contains("Failed to describe") == true)
+
+        let jsonError = PackageDescriptionLoader.LoaderError.jsonDecodingFailed("/path", "decode error")
+        #expect(jsonError.errorDescription?.contains("Failed to decode") == true)
+    }
+}

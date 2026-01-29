@@ -5,16 +5,21 @@ struct TuistPackageValidator {
 
     struct ValidationResult {
         let missingDependencies: [ExternalDependency]
-        let mismatchedDependencies: [(required: ExternalDependency, existing: String)]
+        let mismatchedDependencies: [(required: ExternalDependency, existing: ExternalDependency)]
     }
 
-    /// Validate dependencies against existing Tuist/Package.swift
+    let verbose: Bool
+
+    init(verbose: Bool = false) {
+        self.verbose = verbose
+    }
+
+    /// Validate dependencies against existing Tuist/Package.swift using JSON parsing
     func validate(
         dependencies: [ExternalDependency],
         rootDirectory: URL,
-        customTuistDir: String?,
-        verbose: Bool
-    ) -> ValidationResult {
+        customTuistDir: String?
+    ) async -> ValidationResult {
         // Determine Tuist directory
         let tuistDir: URL
         if let custom = customTuistDir {
@@ -25,8 +30,8 @@ struct TuistPackageValidator {
 
         let packagePath = tuistDir.appendingPathComponent("Package.swift")
 
-        // Read existing Package.swift
-        guard let existingContent = try? String(contentsOf: packagePath, encoding: .utf8) else {
+        // Check if Package.swift exists
+        guard FileManager.default.fileExists(atPath: packagePath.path) else {
             if verbose {
                 print("Note: No existing Tuist/Package.swift found at \(packagePath.path)")
             }
@@ -36,17 +41,30 @@ struct TuistPackageValidator {
             )
         }
 
-        // Parse existing dependencies (simple regex-based parsing)
-        let existingDeps = parseExistingDependencies(from: existingContent)
+        // Load package description using JSON parsing
+        let loader = PackageDescriptionLoader(verbose: verbose)
+        guard let description = try? await loader.loadPackageDescription(at: packagePath) else {
+            if verbose {
+                print("Warning: Could not parse Tuist/Package.swift, assuming all dependencies are missing")
+            }
+            return ValidationResult(
+                missingDependencies: dependencies,
+                mismatchedDependencies: []
+            )
+        }
+
+        // Parse existing dependencies from the package description
+        let existingDeps = parseExistingDependencies(from: description)
 
         var missing: [ExternalDependency] = []
-        var mismatched: [(required: ExternalDependency, existing: String)] = []
+        var mismatched: [(required: ExternalDependency, existing: ExternalDependency)] = []
 
         for dep in dependencies {
-            if let existingLine = existingDeps[dep.url.lowercased()] {
-                // Check if requirements roughly match
-                if !existingLine.contains(dep.requirement.versionString) {
-                    mismatched.append((dep, existingLine))
+            let normalizedUrl = dep.url.lowercased()
+            if let existingDep = existingDeps[normalizedUrl] {
+                // Check if requirements match
+                if !requirementsMatch(required: dep.requirement, existing: existingDep.requirement) {
+                    mismatched.append((dep, existingDep))
                 }
             } else {
                 missing.append(dep)
@@ -59,30 +77,71 @@ struct TuistPackageValidator {
         )
     }
 
-    /// Parse existing .package() declarations from Package.swift content
-    private func parseExistingDependencies(from content: String) -> [String: String] {
-        var result: [String: String] = [:]
+    /// Parse existing dependencies from PackageDescription
+    private func parseExistingDependencies(from description: PackageDescription) -> [String: ExternalDependency] {
+        var result: [String: ExternalDependency] = [:]
 
-        // Match .package(url: "...", ...)
-        let pattern = #"\.package\s*\(\s*url:\s*"([^"]+)"[^)]*\)"#
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
-            return result
-        }
+        guard let deps = description.dependencies else { return result }
 
-        let range = NSRange(content.startIndex..., in: content)
-        let matches = regex.matches(in: content, options: [], range: range)
+        for dep in deps where dep.type == "sourceControl" {
+            guard let url = dep.url, let requirement = dep.requirement else { continue }
 
-        for match in matches {
-            if let fullRange = Range(match.range, in: content),
-               let urlRange = Range(match.range(at: 1), in: content)
-            {
-                let url = String(content[urlRange]).lowercased()
-                let fullLine = String(content[fullRange])
-                result[url] = fullLine
-            }
+            let externalDep = createExternalDependency(
+                identity: dep.identity,
+                url: url,
+                requirement: requirement
+            )
+            result[url.lowercased()] = externalDep
         }
 
         return result
+    }
+
+    /// Create ExternalDependency from PackageDescription.Dependency.Requirement
+    private func createExternalDependency(
+        identity: String,
+        url: String,
+        requirement: PackageDescription.Dependency.Requirement
+    ) -> ExternalDependency {
+        let depRequirement: ExternalDependency.DependencyRequirement
+
+        if let range = requirement.range?.first {
+            depRequirement = .range(from: range.lowerBound, to: range.upperBound)
+        } else if let exact = requirement.exact?.first {
+            depRequirement = .exact(exact)
+        } else if let branch = requirement.branch?.first {
+            depRequirement = .branch(branch)
+        } else if let revision = requirement.revision?.first {
+            depRequirement = .revision(revision)
+        } else {
+            depRequirement = .range(from: "1.0.0", to: "2.0.0")
+        }
+
+        return ExternalDependency(
+            identity: identity,
+            url: url,
+            requirement: depRequirement
+        )
+    }
+
+    /// Check if two requirements match
+    private func requirementsMatch(
+        required: ExternalDependency.DependencyRequirement,
+        existing: ExternalDependency.DependencyRequirement
+    ) -> Bool {
+        switch (required, existing) {
+        case let (.range(reqFrom, reqTo), .range(existFrom, existTo)):
+            return reqFrom == existFrom && reqTo == existTo
+        case let (.exact(reqVersion), .exact(existVersion)):
+            return reqVersion == existVersion
+        case let (.branch(reqBranch), .branch(existBranch)):
+            return reqBranch == existBranch
+        case let (.revision(reqRev), .revision(existRev)):
+            return reqRev == existRev
+        default:
+            // Different requirement types don't match
+            return false
+        }
     }
 
     /// Generate the Swift code line for a dependency
@@ -97,7 +156,7 @@ struct TuistPackageValidator {
         }
 
         print("")
-        print("⚠️  External dependency warnings:")
+        print("Warning: External dependency issues detected:")
         print("")
 
         if !result.missingDependencies.isEmpty {
@@ -113,7 +172,7 @@ struct TuistPackageValidator {
         if !result.mismatchedDependencies.isEmpty {
             print("Version mismatches in Tuist/Package.swift:")
             for (required, existing) in result.mismatchedDependencies {
-                print("  Found:    \(existing)")
+                print("  Found:    \(generateDependencyLine(for: existing))")
                 print("  Expected: \(generateDependencyLine(for: required))")
                 print("")
             }

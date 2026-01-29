@@ -8,8 +8,11 @@ struct PackageScanner {
     /// Timeout for each package describe operation (in seconds)
     private let timeoutSeconds: UInt64 = 30
 
+    /// Underlying loader for package descriptions
+    private let loader: PackageDescriptionLoader
+
     /// Name of the cache file stored next to each Package.swift
-    static let cacheFileName = ".package-description.json"
+    static let cacheFileName = PackageDescriptionLoader.cacheFileName
 
     /// Directories to exclude from scanning
     private let excludedDirectories: Set<String> = [
@@ -26,6 +29,7 @@ struct PackageScanner {
     init(rootDirectory: URL, verbose: Bool = false) {
         self.rootDirectory = rootDirectory
         self.verbose = verbose
+        self.loader = PackageDescriptionLoader(verbose: verbose, timeoutSeconds: 30)
     }
 
     /// Find all Package.swift files in the directory tree
@@ -76,36 +80,12 @@ struct PackageScanner {
 
     /// Load cached description if available and still valid (cache newer than Package.swift)
     func loadCachedDescription(at packagePath: URL) -> PackageDescription? {
-        let cacheFile = packagePath.deletingLastPathComponent()
-            .appendingPathComponent(Self.cacheFileName)
-
-        let fm = FileManager.default
-        guard fm.fileExists(atPath: cacheFile.path) else { return nil }
-
-        // Check if cache is newer than Package.swift
-        guard let pkgMod = try? fm.attributesOfItem(atPath: packagePath.path)[.modificationDate] as? Date,
-              let cacheMod = try? fm.attributesOfItem(atPath: cacheFile.path)[.modificationDate] as? Date,
-              cacheMod > pkgMod else { return nil }
-
-        do {
-            let data = try Data(contentsOf: cacheFile)
-            return try JSONDecoder().decode(PackageDescription.self, from: data)
-        } catch {
-            if verbose {
-                print("Cache read failed for \(packagePath.path): \(error.localizedDescription)")
-            }
-            return nil
-        }
+        loader.loadCachedDescription(at: packagePath)
     }
 
     /// Write description to cache file
     func cacheDescription(_ description: PackageDescription, at packagePath: URL) throws {
-        let cacheFile = packagePath.deletingLastPathComponent()
-            .appendingPathComponent(Self.cacheFileName)
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let data = try encoder.encode(description)
-        try data.write(to: cacheFile)
+        try loader.cacheDescription(description, at: packagePath)
     }
 
     /// Load package description, using cache if valid, otherwise running `swift package describe`
@@ -120,7 +100,7 @@ struct PackageScanner {
         }
 
         // Cache miss - load from swift package describe and dump-package in parallel
-        async let describeTask = loadPackageDescriptionFromSwift(at: packagePath)
+        async let describeTask = loader.loadPackageDescriptionFromSwift(at: packagePath)
         async let dumpTask = loadPackageDump(at: packagePath)
 
         let description = try await describeTask
@@ -218,8 +198,8 @@ struct PackageScanner {
 
         try process.run()
 
-        // Wait for process with timeout
-        let completed = await waitForProcessWithTimeout(process: process, timeoutSeconds: timeoutSeconds)
+        // Wait for process with timeout (using loader's helper)
+        let completed = await loader.waitForProcessWithTimeout(process: process, timeoutSeconds: timeoutSeconds)
 
         if !completed {
             process.terminate()
@@ -247,105 +227,8 @@ struct PackageScanner {
         }
     }
 
-    /// Load package description using `swift package describe --type json` with timeout
-    private func loadPackageDescriptionFromSwift(at packagePath: URL) async throws -> PackageDescription {
-        let packageDirectory = packagePath.deletingLastPathComponent()
-
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["swift", "package", "describe", "--type", "json"]
-        process.currentDirectoryURL = packageDirectory
-
-        let outputPipe = Pipe()
-        let errorPipe = Pipe()
-        process.standardOutput = outputPipe
-        process.standardError = errorPipe
-
-        if verbose {
-            print("Loading package description: \(packageDirectory.path)")
-        }
-
-        // Create tasks to read output asynchronously
-        let outputTask = Task {
-            var data = Data()
-            for try await chunk in outputPipe.fileHandleForReading.bytes {
-                data.append(chunk)
-                if verbose {
-                    print(String(bytes: [chunk], encoding: .utf8) ?? "", terminator: "")
-                }
-            }
-            return data
-        }
-
-        let errorTask = Task {
-            var data = Data()
-            for try await chunk in errorPipe.fileHandleForReading.bytes {
-                data.append(chunk)
-                if verbose {
-                    print(String(bytes: [chunk], encoding: .utf8) ?? "", terminator: "")
-                }
-            }
-            return data
-        }
-
-        try process.run()
-
-        // Wait for process with timeout
-        let completed = await waitForProcessWithTimeout(process: process, timeoutSeconds: timeoutSeconds)
-
-        if !completed {
-            // Process timed out - kill it
-            process.terminate()
-            // Give it a moment to terminate gracefully
-            try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
-            if process.isRunning {
-                // Force kill if still running
-                kill(process.processIdentifier, SIGKILL)
-            }
-            
-            // Cancel reading tasks
-            outputTask.cancel()
-            errorTask.cancel()
-            
-            throw ScannerError.timeout(packageDirectory.path, timeoutSeconds)
-        }
-
-        // Wait for all output to be read
-        let outputData = try await outputTask.value
-        let errorData = try await errorTask.value
-
-        if process.terminationStatus != 0 {
-            let errorMessage = String(data: errorData, encoding: .utf8) ?? "Unknown error"
-            throw ScannerError.packageDescribeFailed(packageDirectory.path, errorMessage)
-        }
-
-        do {
-            let decoder = JSONDecoder()
-            return try decoder.decode(PackageDescription.self, from: outputData)
-        } catch {
-            throw ScannerError.jsonDecodingFailed(packageDirectory.path, error.localizedDescription)
-        }
-    }
-
-    /// Wait for a process to complete with a timeout (non-blocking polling)
-    private func waitForProcessWithTimeout(process: Process, timeoutSeconds: UInt64) async -> Bool {
-        let pollIntervalNanoseconds: UInt64 = 100_000_000 // 100ms
-        let maxPolls = (timeoutSeconds * 1_000_000_000) / pollIntervalNanoseconds
-
-        for _ in 0..<maxPolls {
-            if !process.isRunning {
-                return true
-            }
-            try? await Task.sleep(nanoseconds: pollIntervalNanoseconds)
-        }
-
-        // Final check
-        return !process.isRunning
-    }
-
     enum ScannerError: LocalizedError {
         case cannotEnumerateDirectory(String)
-        case packageDescribeFailed(String, String)
         case packageDumpFailed(String)
         case jsonDecodingFailed(String, String)
         case timeout(String, UInt64)
@@ -354,8 +237,6 @@ struct PackageScanner {
             switch self {
             case .cannotEnumerateDirectory(let path):
                 return "Cannot enumerate directory: \(path)"
-            case .packageDescribeFailed(let path, let message):
-                return "Failed to describe package at \(path): \(message)"
             case .packageDumpFailed(let path):
                 return "Failed to dump package at \(path)"
             case .jsonDecodingFailed(let path, let message):

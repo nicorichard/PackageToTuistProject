@@ -349,13 +349,12 @@ struct ConvertCommand {
         // Validate external dependencies
         let externalDeps = externalDepsCollector.allExternalDependencies()
         if !externalDeps.isEmpty {
-            let validator = TuistPackageValidator()
+            let validator = TuistPackageValidator(verbose: verbose)
             let tuistRootDir = rootURL.deletingLastPathComponent()
-            let result = validator.validate(
+            let result = await validator.validate(
                 dependencies: externalDeps,
                 rootDirectory: tuistRootDir,
-                customTuistDir: tuistDir,
-                verbose: verbose
+                customTuistDir: tuistDir
             )
             validator.printWarnings(result: result)
         }
