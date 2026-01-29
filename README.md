@@ -36,6 +36,7 @@ swift run PackageToTuistProject ./Packages --verbose
 | `--tuist-dir` | Path to Tuist directory for dependency validation | `../Tuist` |
 | `--dry-run` | Preview changes without writing files | `false` |
 | `--verbose` | Enable verbose output | `false` |
+| `--force` | Regenerate all files, ignoring cached package descriptions | `false` |
 
 ## Conversion Mapping
 
@@ -59,3 +60,7 @@ Add the following to your dependencies array:
 
     .package(url: "https://github.com/example/lib", from: "1.0.0"),
 ```
+
+## Design Goals
+
+This tool makes a best-effort to preserve existing Swift Package functionality, allowing incremental Tuist adoption over an existing Swift Package without requiring manual configuration adjustments.
