@@ -29,28 +29,46 @@ struct PackageConverter {
     let bundleIdPrefix: String
     let defaultProductType: TuistTarget.ProductType
     let verbose: Bool
+    let platformFilter: Set<SupportedPlatform>?
 
     init(
         bundleIdPrefix: String,
         productType: String,
-        verbose: Bool = false
+        verbose: Bool = false,
+        platformFilter: Set<SupportedPlatform>? = nil
     ) {
         self.bundleIdPrefix = bundleIdPrefix
         self.defaultProductType = TuistTarget.ProductType(rawValue: productType) ?? .staticFramework
         self.verbose = verbose
+        self.platformFilter = platformFilter
     }
 
     /// Convert a package description to a Tuist project
+    /// Returns nil if the package has no matching platforms after filtering
     func convert(
         package: PackageDescription,
         packagePath: URL,
         collector: DependencyCollector,
         allDescriptions: [String: PackageDescription]
-    ) throws -> TuistProject {
+    ) throws -> TuistProject? {
         // Use package platforms if specified, otherwise fall back to SPM safe minimums
-        let platforms = (package.platforms?.isEmpty == false)
+        var platforms = (package.platforms?.isEmpty == false)
             ? package.platforms!
             : Self.defaultPlatforms
+
+        // Apply platform filter if specified
+        if let filter = platformFilter {
+            platforms = platforms.filter { platform in
+                filter.contains { $0.matches(platform) }
+            }
+            // Skip package if no platforms match the filter
+            if platforms.isEmpty {
+                if verbose {
+                    print("  Skipping \(package.name): no matching platforms")
+                }
+                return nil
+            }
+        }
 
         let packageDir = packagePath.deletingLastPathComponent()
 

@@ -1033,11 +1033,11 @@ struct PackageConverterTests {
             allDescriptions: [:]
         )
 
-        #expect(project.name == "MyPackage")
-        #expect(project.targets.count == 1)
-        #expect(project.targets[0].name == "MyTarget")
-        #expect(project.targets[0].bundleId == "com.example.MyTarget")
-        #expect(project.targets[0].product == .staticFramework)
+        #expect(project!.name == "MyPackage")
+        #expect(project!.targets.count == 1)
+        #expect(project!.targets[0].name == "MyTarget")
+        #expect(project!.targets[0].bundleId == "com.example.MyTarget")
+        #expect(project!.targets[0].product == .staticFramework)
     }
 
     @Test("skips executable targets")
@@ -1073,8 +1073,8 @@ struct PackageConverterTests {
             allDescriptions: [:]
         )
 
-        #expect(project.targets.count == 1)
-        #expect(project.targets[0].name == "MyLib")
+        #expect(project!.targets.count == 1)
+        #expect(project!.targets[0].name == "MyLib")
     }
 
     @Test("converts test targets to unitTests product type")
@@ -1109,7 +1109,7 @@ struct PackageConverterTests {
             allDescriptions: [:]
         )
 
-        #expect(project.targets[0].product == .unitTests)
+        #expect(project!.targets[0].product == .unitTests)
     }
 
     @Test("uses default platforms when platforms is nil")
@@ -1144,7 +1144,7 @@ struct PackageConverterTests {
         )
 
         // Should have all 5 default platforms
-        let target = project.targets[0]
+        let target = project!.targets[0]
         #expect(target.destinations.contains(".iOS"))
         #expect(target.destinations.contains(".macOS"))
         #expect(target.destinations.contains(".tvOS"))
@@ -1192,7 +1192,7 @@ struct PackageConverterTests {
         )
 
         // Should have all 5 default platforms
-        let target = project.targets[0]
+        let target = project!.targets[0]
         #expect(target.destinations.contains(".iOS"))
         #expect(target.destinations.contains(".macOS"))
         #expect(target.destinations.contains(".tvOS"))
@@ -1246,7 +1246,7 @@ struct PackageConverterTests {
             allDescriptions: [:]
         )
 
-        #expect(project.targets[0].destinations == ".macOS")
+        #expect(project!.targets[0].destinations == ".macOS")
     }
 
     @Test("converts target dependencies correctly")
@@ -1282,7 +1282,7 @@ struct PackageConverterTests {
             allDescriptions: [:]
         )
 
-        let targetB = project.targets.first { $0.name == "TargetB" }!
+        let targetB = project!.targets.first { $0.name == "TargetB" }!
         #expect(targetB.dependencies.count == 1)
         #expect(targetB.dependencies[0] == .target(name: "TargetA"))
     }
@@ -1322,8 +1322,8 @@ struct PackageConverterTests {
             allDescriptions: [:]
         )
 
-        #expect(project.targets[0].dependencies.count == 1)
-        #expect(project.targets[0].dependencies[0] == .external(name: "Alamofire"))
+        #expect(project!.targets[0].dependencies.count == 1)
+        #expect(project!.targets[0].dependencies[0] == .external(name: "Alamofire"))
     }
 
     @Test("respects different product types")
@@ -1369,8 +1369,8 @@ struct PackageConverterTests {
             allDescriptions: [:]
         )
 
-        #expect(frameworkProject.targets[0].product == .framework)
-        #expect(staticLibProject.targets[0].product == .staticLibrary)
+        #expect(frameworkProject!.targets[0].product == .framework)
+        #expect(staticLibProject!.targets[0].product == .staticLibrary)
     }
 
     @Test("resolves multi-target product dependency to individual target dependencies")
@@ -1422,7 +1422,7 @@ struct PackageConverterTests {
         )
 
         // Should have dependencies on both targets from the product
-        let consumerTarget = project.targets.first { $0.name == "ConsumerTarget" }!
+        let consumerTarget = project!.targets.first { $0.name == "ConsumerTarget" }!
         #expect(consumerTarget.dependencies.count == 2)
         #expect(consumerTarget.dependencies.contains(.project(path: "../ProviderPackage", target: "TargetA")))
         #expect(consumerTarget.dependencies.contains(.project(path: "../ProviderPackage", target: "TargetB")))
@@ -1478,7 +1478,7 @@ struct PackageConverterTests {
         )
 
         // Should have 1 + 3 = 4 dependencies
-        let consumerTarget = project.targets.first { $0.name == "ConsumerTarget" }!
+        let consumerTarget = project!.targets.first { $0.name == "ConsumerTarget" }!
         #expect(consumerTarget.dependencies.count == 4)
         #expect(consumerTarget.dependencies.contains(.project(path: "../ProviderPackage", target: "SingleTarget")))
         #expect(consumerTarget.dependencies.contains(.project(path: "../ProviderPackage", target: "TargetA")))
@@ -1541,7 +1541,7 @@ struct PackageConverterTests {
         )
 
         // Should have 3 unique dependencies: Core, Utils, Network (Utils deduplicated)
-        let consumerTarget = project.targets.first { $0.name == "ConsumerTarget" }!
+        let consumerTarget = project!.targets.first { $0.name == "ConsumerTarget" }!
         #expect(consumerTarget.dependencies.count == 3)
         #expect(consumerTarget.dependencies.contains(.project(path: "../NetworkStack", target: "Core")))
         #expect(consumerTarget.dependencies.contains(.project(path: "../NetworkStack", target: "Utils")))
@@ -1599,7 +1599,7 @@ struct PackageConverterTests {
             allDescriptions: [:]
         )
 
-        let consumerTarget = project.targets.first { $0.name == "ConsumerTarget" }!
+        let consumerTarget = project!.targets.first { $0.name == "ConsumerTarget" }!
         #expect(consumerTarget.dependencies.count == 1)
         #expect(consumerTarget.dependencies[0] == .project(path: "../ProviderPackage", target: "SingleTarget"))
     }
@@ -2610,12 +2610,12 @@ struct FixtureIntegrationTests {
             allDescriptions: [:]
         )
 
-        #expect(project.name == "BasicLibrary")
-        #expect(project.targets.count == 1)
-        #expect(project.targets[0].name == "BasicLibrary")
-        #expect(project.targets[0].bundleId == "com.test.BasicLibrary")
-        #expect(project.targets[0].product == .staticFramework)
-        #expect(project.targets[0].destinations == ".iOS")
+        #expect(project!.name == "BasicLibrary")
+        #expect(project!.targets.count == 1)
+        #expect(project!.targets[0].name == "BasicLibrary")
+        #expect(project!.targets[0].bundleId == "com.test.BasicLibrary")
+        #expect(project!.targets[0].product == .staticFramework)
+        #expect(project!.targets[0].destinations == ".iOS")
     }
 
     @Test("converts MultiTarget fixture preserving dependencies")
@@ -2636,12 +2636,12 @@ struct FixtureIntegrationTests {
             allDescriptions: [:]
         )
 
-        #expect(project.name == "MultiTarget")
-        #expect(project.targets.count == 2)
+        #expect(project!.name == "MultiTarget")
+        #expect(project!.targets.count == 2)
 
-        let featureTarget = project.targets.first { $0.name == "Feature" }
+        let featureTarget = project!.targets.first { $0.name == "Feature" }
         #expect(featureTarget?.dependencies.count == 1)
-        #expect(featureTarget?.dependencies[0] == .target(name: "Core"))
+        #expect(featureTarget?.dependencies[0] == TuistDependency.target(name: "Core"))
     }
 
     @Test("converts WithTestTarget fixture with test target product type")
@@ -2662,10 +2662,10 @@ struct FixtureIntegrationTests {
             allDescriptions: [:]
         )
 
-        #expect(project.name == "WithTestTarget")
+        #expect(project!.name == "WithTestTarget")
 
-        let libTarget = project.targets.first { $0.name == "MyLib" }
-        let testTarget = project.targets.first { $0.name == "MyLibTests" }
+        let libTarget = project!.targets.first { $0.name == "MyLib" }
+        let testTarget = project!.targets.first { $0.name == "MyLibTests" }
 
         #expect(libTarget?.product == .staticFramework)
         #expect(testTarget?.product == .unitTests)
@@ -2690,8 +2690,8 @@ struct FixtureIntegrationTests {
             allDescriptions: [:]
         )
 
-        #expect(project.name == "WithDependencies")
-        #expect(project.targets[0].dependencies.contains(.external(name: "ArgumentParser")) == true)
+        #expect(project!.name == "WithDependencies")
+        #expect(project!.targets[0].dependencies.contains(.external(name: "ArgumentParser")) == true)
     }
 
     @Test("generates valid Project.swift from BasicLibrary fixture")
@@ -2713,7 +2713,7 @@ struct FixtureIntegrationTests {
         )
 
         let writer = ProjectWriter()
-        let output = writer.generate(project: project)
+        let output = writer.generate(project: project!)
 
         #expect(output.contains("import ProjectDescription"))
         #expect(output.contains("let project = Project("))
@@ -3746,5 +3746,341 @@ struct PackageDescriptionLoaderTests {
 
         let jsonError = PackageDescriptionLoader.LoaderError.jsonDecodingFailed("/path", "decode error")
         #expect(jsonError.errorDescription?.contains("Failed to decode") == true)
+    }
+}
+
+// MARK: - SupportedPlatform Tests
+
+@Suite("SupportedPlatform")
+struct SupportedPlatformTests {
+    @Test("initializes from lowercase string")
+    func initializesFromLowercase() {
+        #expect(SupportedPlatform(argument: "ios") == .iOS)
+        #expect(SupportedPlatform(argument: "macos") == .macOS)
+        #expect(SupportedPlatform(argument: "tvos") == .tvOS)
+        #expect(SupportedPlatform(argument: "watchos") == .watchOS)
+        #expect(SupportedPlatform(argument: "visionos") == .visionOS)
+    }
+
+    @Test("initializes from uppercase string")
+    func initializesFromUppercase() {
+        #expect(SupportedPlatform(argument: "IOS") == .iOS)
+        #expect(SupportedPlatform(argument: "MACOS") == .macOS)
+        #expect(SupportedPlatform(argument: "TVOS") == .tvOS)
+        #expect(SupportedPlatform(argument: "WATCHOS") == .watchOS)
+        #expect(SupportedPlatform(argument: "VISIONOS") == .visionOS)
+    }
+
+    @Test("initializes from mixed case string")
+    func initializesFromMixedCase() {
+        #expect(SupportedPlatform(argument: "iOS") == .iOS)
+        #expect(SupportedPlatform(argument: "MacOS") == .macOS)
+        #expect(SupportedPlatform(argument: "TvOs") == .tvOS)
+        #expect(SupportedPlatform(argument: "WatchOS") == .watchOS)
+        #expect(SupportedPlatform(argument: "VisionOS") == .visionOS)
+    }
+
+    @Test("returns nil for invalid platform")
+    func returnsNilForInvalid() {
+        #expect(SupportedPlatform(argument: "linux") == nil)
+        #expect(SupportedPlatform(argument: "android") == nil)
+        #expect(SupportedPlatform(argument: "") == nil)
+        #expect(SupportedPlatform(argument: "i os") == nil)
+    }
+
+    @Test("matches PackageDescription.Platform correctly")
+    func matchesPlatform() {
+        let iosPlatform = PackageDescription.Platform(name: "ios", version: "15.0")
+        let macosPlatform = PackageDescription.Platform(name: "macos", version: "12.0")
+        let tvosPlatform = PackageDescription.Platform(name: "tvos", version: "15.0")
+        let watchosPlatform = PackageDescription.Platform(name: "watchos", version: "8.0")
+        let visionosPlatform = PackageDescription.Platform(name: "visionos", version: "1.0")
+
+        #expect(SupportedPlatform.iOS.matches(iosPlatform) == true)
+        #expect(SupportedPlatform.iOS.matches(macosPlatform) == false)
+
+        #expect(SupportedPlatform.macOS.matches(macosPlatform) == true)
+        #expect(SupportedPlatform.macOS.matches(iosPlatform) == false)
+
+        #expect(SupportedPlatform.tvOS.matches(tvosPlatform) == true)
+        #expect(SupportedPlatform.tvOS.matches(iosPlatform) == false)
+
+        #expect(SupportedPlatform.watchOS.matches(watchosPlatform) == true)
+        #expect(SupportedPlatform.watchOS.matches(iosPlatform) == false)
+
+        #expect(SupportedPlatform.visionOS.matches(visionosPlatform) == true)
+        #expect(SupportedPlatform.visionOS.matches(iosPlatform) == false)
+    }
+
+    @Test("matches is case insensitive for platform name")
+    func matchesCaseInsensitive() {
+        let uppercasePlatform = PackageDescription.Platform(name: "IOS", version: "15.0")
+        let mixedCasePlatform = PackageDescription.Platform(name: "MacOS", version: "12.0")
+
+        #expect(SupportedPlatform.iOS.matches(uppercasePlatform) == true)
+        #expect(SupportedPlatform.macOS.matches(mixedCasePlatform) == true)
+    }
+}
+
+// MARK: - PackageConverter Platform Filtering Tests
+
+@Suite("PackageConverter Platform Filtering")
+struct PackageConverterPlatformFilteringTests {
+    @Test("converter without filter keeps all platforms")
+    func converterWithoutFilterKeepsAll() throws {
+        let converter = PackageConverter(
+            bundleIdPrefix: "com.test",
+            productType: "staticFramework",
+            verbose: false,
+            platformFilter: nil
+        )
+
+        let package = PackageDescription(
+            name: "TestPackage",
+            manifestDisplayName: nil,
+            path: "/test",
+            platforms: [
+                .init(name: "ios", version: "15.0"),
+                .init(name: "macos", version: "12.0"),
+            ],
+            products: [
+                .init(name: "TestLib", targets: ["TestLib"], type: .init(library: ["automatic"], executable: nil))
+            ],
+            targets: [
+                .init(
+                    name: "TestLib",
+                    c99name: nil,
+                    type: "regular",
+                    path: "Sources/TestLib",
+                    sources: nil,
+                    targetDependencies: nil,
+                    productDependencies: nil,
+                    resources: nil,
+                    moduleType: nil,
+                    swiftSettings: nil
+                )
+            ],
+            dependencies: nil,
+            toolsVersion: "5.9"
+        )
+
+        let packagePath = URL(fileURLWithPath: "/test/Package.swift")
+        let collector = DependencyCollector()
+
+        let result = try converter.convert(
+            package: package,
+            packagePath: packagePath,
+            collector: collector,
+            allDescriptions: [:]
+        )
+
+        #expect(result!.targets.first?.destinations.contains(".iOS") == true)
+        #expect(result!.targets.first?.destinations.contains(".macOS") == true)
+    }
+
+    @Test("converter with single platform filter filters correctly")
+    func converterWithSingleFilter() throws {
+        let converter = PackageConverter(
+            bundleIdPrefix: "com.test",
+            productType: "staticFramework",
+            verbose: false,
+            platformFilter: [.iOS]
+        )
+
+        let package = PackageDescription(
+            name: "TestPackage",
+            manifestDisplayName: nil,
+            path: "/test",
+            platforms: [
+                .init(name: "ios", version: "15.0"),
+                .init(name: "macos", version: "12.0"),
+            ],
+            products: [
+                .init(name: "TestLib", targets: ["TestLib"], type: .init(library: ["automatic"], executable: nil))
+            ],
+            targets: [
+                .init(
+                    name: "TestLib",
+                    c99name: nil,
+                    type: "regular",
+                    path: "Sources/TestLib",
+                    sources: nil,
+                    targetDependencies: nil,
+                    productDependencies: nil,
+                    resources: nil,
+                    moduleType: nil,
+                    swiftSettings: nil
+                )
+            ],
+            dependencies: nil,
+            toolsVersion: "5.9"
+        )
+
+        let packagePath = URL(fileURLWithPath: "/test/Package.swift")
+        let collector = DependencyCollector()
+
+        let result = try converter.convert(
+            package: package,
+            packagePath: packagePath,
+            collector: collector,
+            allDescriptions: [:]
+        )
+
+        #expect(result!.targets.first?.destinations == ".iOS")
+    }
+
+    @Test("converter with multiple platform filter keeps matching platforms")
+    func converterWithMultipleFilter() throws {
+        let converter = PackageConverter(
+            bundleIdPrefix: "com.test",
+            productType: "staticFramework",
+            verbose: false,
+            platformFilter: [.iOS, .tvOS]
+        )
+
+        let package = PackageDescription(
+            name: "TestPackage",
+            manifestDisplayName: nil,
+            path: "/test",
+            platforms: [
+                .init(name: "ios", version: "15.0"),
+                .init(name: "macos", version: "12.0"),
+                .init(name: "tvos", version: "15.0"),
+            ],
+            products: [
+                .init(name: "TestLib", targets: ["TestLib"], type: .init(library: ["automatic"], executable: nil))
+            ],
+            targets: [
+                .init(
+                    name: "TestLib",
+                    c99name: nil,
+                    type: "regular",
+                    path: "Sources/TestLib",
+                    sources: nil,
+                    targetDependencies: nil,
+                    productDependencies: nil,
+                    resources: nil,
+                    moduleType: nil,
+                    swiftSettings: nil
+                )
+            ],
+            dependencies: nil,
+            toolsVersion: "5.9"
+        )
+
+        let packagePath = URL(fileURLWithPath: "/test/Package.swift")
+        let collector = DependencyCollector()
+
+        let result = try converter.convert(
+            package: package,
+            packagePath: packagePath,
+            collector: collector,
+            allDescriptions: [:]
+        )
+
+        // Should have iOS and tvOS but not macOS
+        #expect(result!.targets.first?.destinations.contains(".iOS") == true)
+        #expect(result!.targets.first?.destinations.contains(".tvOS") == true)
+        #expect(result!.targets.first?.destinations.contains(".macOS") == false)
+    }
+
+    @Test("converter returns nil when no platforms match filter")
+    func converterReturnsNilWhenNoMatch() throws {
+        let converter = PackageConverter(
+            bundleIdPrefix: "com.test",
+            productType: "staticFramework",
+            verbose: false,
+            platformFilter: [.visionOS]
+        )
+
+        let package = PackageDescription(
+            name: "TestPackage",
+            manifestDisplayName: nil,
+            path: "/test",
+            platforms: [
+                .init(name: "ios", version: "15.0"),
+                .init(name: "macos", version: "12.0"),
+            ],
+            products: [
+                .init(name: "TestLib", targets: ["TestLib"], type: .init(library: ["automatic"], executable: nil))
+            ],
+            targets: [
+                .init(
+                    name: "TestLib",
+                    c99name: nil,
+                    type: "regular",
+                    path: "Sources/TestLib",
+                    sources: nil,
+                    targetDependencies: nil,
+                    productDependencies: nil,
+                    resources: nil,
+                    moduleType: nil,
+                    swiftSettings: nil
+                )
+            ],
+            dependencies: nil,
+            toolsVersion: "5.9"
+        )
+
+        let packagePath = URL(fileURLWithPath: "/test/Package.swift")
+        let collector = DependencyCollector()
+
+        let result = try converter.convert(
+            package: package,
+            packagePath: packagePath,
+            collector: collector,
+            allDescriptions: [:]
+        )
+
+        #expect(result == nil)
+    }
+
+    @Test("converter applies filter to default platforms")
+    func converterFiltersDefaultPlatforms() throws {
+        let converter = PackageConverter(
+            bundleIdPrefix: "com.test",
+            productType: "staticFramework",
+            verbose: false,
+            platformFilter: [.iOS]
+        )
+
+        // Package without explicit platforms will use defaults
+        let package = PackageDescription(
+            name: "TestPackage",
+            manifestDisplayName: nil,
+            path: "/test",
+            platforms: nil,
+            products: [
+                .init(name: "TestLib", targets: ["TestLib"], type: .init(library: ["automatic"], executable: nil))
+            ],
+            targets: [
+                .init(
+                    name: "TestLib",
+                    c99name: nil,
+                    type: "regular",
+                    path: "Sources/TestLib",
+                    sources: nil,
+                    targetDependencies: nil,
+                    productDependencies: nil,
+                    resources: nil,
+                    moduleType: nil,
+                    swiftSettings: nil
+                )
+            ],
+            dependencies: nil,
+            toolsVersion: "5.9"
+        )
+
+        let packagePath = URL(fileURLWithPath: "/test/Package.swift")
+        let collector = DependencyCollector()
+
+        let result = try converter.convert(
+            package: package,
+            packagePath: packagePath,
+            collector: collector,
+            allDescriptions: [:]
+        )
+
+        #expect(result!.targets.first?.destinations == ".iOS")
     }
 }

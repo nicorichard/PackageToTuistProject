@@ -60,6 +60,7 @@ struct ConvertCommand {
     let dryRun: Bool
     let verbose: Bool
     let force: Bool
+    let platformFilter: Set<SupportedPlatform>?
 
     /// Maximum number of concurrent package loads
     private let maxConcurrentLoads = 8
@@ -71,7 +72,8 @@ struct ConvertCommand {
         tuistDir: String?,
         dryRun: Bool,
         verbose: Bool,
-        force: Bool = false
+        force: Bool = false,
+        platformFilter: Set<SupportedPlatform>? = nil
     ) {
         self.rootDirectory = rootDirectory
         self.bundleIdPrefix = bundleIdPrefix
@@ -80,6 +82,7 @@ struct ConvertCommand {
         self.dryRun = dryRun
         self.verbose = verbose
         self.force = force
+        self.platformFilter = platformFilter
     }
 
     /// Check if a single package needs regeneration.
@@ -275,7 +278,8 @@ struct ConvertCommand {
         let converter = PackageConverter(
             bundleIdPrefix: bundleIdPrefix,
             productType: productType,
-            verbose: verbose
+            verbose: verbose,
+            platformFilter: platformFilter
         )
         let projectWriter = ProjectWriter()
         let allDescriptionsByPath = Dictionary(
@@ -306,13 +310,15 @@ struct ConvertCommand {
                         pathMatrix: pathMatrix
                     )
 
-                    // Convert
-                    let project = try converter.convert(
+                    // Convert (returns nil if package is skipped due to platform filter)
+                    guard let project = try converter.convert(
                         package: description,
                         packagePath: packagePath,
                         collector: packageCollector,
                         allDescriptions: allDescriptionsByPath
-                    )
+                    ) else {
+                        return
+                    }
 
                     // Write (each package writes to its own file)
                     try projectWriter.write(project: project, dryRun: isDryRun, verbose: isVerbose)
@@ -332,12 +338,14 @@ struct ConvertCommand {
                             pathMatrix: pathMatrix
                         )
 
-                        let project = try converter.convert(
+                        guard let project = try converter.convert(
                             package: description,
                             packagePath: packagePath,
                             collector: packageCollector,
                             allDescriptions: allDescriptionsByPath
-                        )
+                        ) else {
+                            return
+                        }
 
                         try projectWriter.write(project: project, dryRun: isDryRun, verbose: isVerbose)
                         await progress.increment(packageName: description.name)

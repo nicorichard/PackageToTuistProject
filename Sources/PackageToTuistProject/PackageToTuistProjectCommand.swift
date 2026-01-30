@@ -29,6 +29,9 @@ struct PackageToTuistProject: AsyncParsableCommand {
     @Flag(name: .long, help: "Regenerate all Project.swift files, ignoring timestamps")
     var force: Bool = false
 
+    @Option(name: .long, parsing: .upToNextOption, help: "Filter to specific platforms (can be repeated). Valid values: ios, macos, tvos, watchos, visionos")
+    var platform: [SupportedPlatform] = []
+
     func run() async throws {
         let command = ConvertCommand(
             rootDirectory: rootDirectory,
@@ -37,7 +40,8 @@ struct PackageToTuistProject: AsyncParsableCommand {
             tuistDir: tuistDir,
             dryRun: dryRun,
             verbose: verbose,
-            force: force
+            force: force,
+            platformFilter: platform.isEmpty ? nil : Set(platform)
         )
         try await command.execute()
     }
