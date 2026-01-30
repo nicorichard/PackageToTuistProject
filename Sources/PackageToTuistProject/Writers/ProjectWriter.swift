@@ -82,8 +82,18 @@ struct ProjectWriter {
             """))
 
         // Single place where commas are added - join all arguments
+        // Indent multi-line values so all lines align properly
+        let baseIndent = "            " // 12 spaces for argument level
         let argumentsCode = arguments
-            .map { "            \($0.0): \($0.1)" }
+            .map { label, value in
+                let indentedValue = value.split(separator: "\n", omittingEmptySubsequences: false)
+                    .enumerated()
+                    .map { index, line in
+                        index == 0 ? String(line) : baseIndent + String(line)
+                    }
+                    .joined(separator: "\n")
+                return "\(baseIndent)\(label): \(indentedValue)"
+            }
             .joined(separator: ",\n")
 
         return """
