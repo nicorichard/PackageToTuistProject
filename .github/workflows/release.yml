@@ -4,6 +4,9 @@ on:
   release:
     types: [created]
 
+permissions:
+  contents: write
+
 jobs:
   build-and-upload:
     name: Build and Upload Release Assets
@@ -50,13 +53,13 @@ jobs:
       - name: Compress binary
         run: |
           cd .build/release
-          zip PackageToTuistProject-${{ steps.version.outputs.VERSION }}-macos-arm64.zip PackageToTuistProject
+          tar -czvf PackageToTuistProject-${{ steps.version.outputs.VERSION }}-macos-arm64.tar.gz PackageToTuistProject
 
       - name: Upload release assets
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload ${{ steps.version.outputs.VERSION }} \
-            ".build/release/PackageToTuistProject-${{ steps.version.outputs.VERSION }}-macos-arm64.zip" \
+            ".build/release/PackageToTuistProject-${{ steps.version.outputs.VERSION }}-macos-arm64.tar.gz" \
             "PackageToTuistProject.artifactbundle.zip" \
             --clobber
