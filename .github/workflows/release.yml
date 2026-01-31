@@ -1,0 +1,62 @@
+name: Release
+
+on:
+  release:
+    types: [created]
+
+jobs:
+  build-and-upload:
+    name: Build and Upload Release Assets
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Build for arm64
+        run: swift build -c release --arch arm64
+
+      - name: Create artifact bundle
+        run: |
+          BUNDLE_NAME="PackageToTuistProject.artifactbundle"
+          mkdir -p "${BUNDLE_NAME}/PackageToTuistProject-${{ steps.version.outputs.VERSION }}-macos/bin"
+
+          cp .build/release/PackageToTuistProject \
+            "${BUNDLE_NAME}/PackageToTuistProject-${{ steps.version.outputs.VERSION }}-macos/bin/"
+
+          cat > "${BUNDLE_NAME}/info.json" << EOF
+          {
+            "schemaVersion": "1.0",
+            "artifacts": {
+              "PackageToTuistProject": {
+                "version": "${{ steps.version.outputs.VERSION }}",
+                "type": "executable",
+                "variants": [
+                  {
+                    "path": "PackageToTuistProject-${{ steps.version.outputs.VERSION }}-macos/bin/PackageToTuistProject",
+                    "supportedTriples": ["arm64-apple-macosx"]
+                  }
+                ]
+              }
+            }
+          }
+          EOF
+
+          zip -r "${BUNDLE_NAME}.zip" "${BUNDLE_NAME}"
+
+      - name: Compress binary
+        run: |
+          cd .build/release
+          zip PackageToTuistProject-${{ steps.version.outputs.VERSION }}-macos-arm64.zip PackageToTuistProject
+
+      - name: Upload release assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload ${{ steps.version.outputs.VERSION }} \
+            ".build/release/PackageToTuistProject-${{ steps.version.outputs.VERSION }}-macos-arm64.zip" \
+            "PackageToTuistProject.artifactbundle.zip" \
+            --clobber
