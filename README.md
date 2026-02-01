@@ -1,6 +1,6 @@
 # PackageToTuistProject
 
-Convert Swift Package `Package.swift` files into Tuist `Project.swift` files.
+Convert Swift Package `Package.swift` files into Tuist `Project.swift` files that **just works**.
 
 ## Build
 
@@ -11,26 +11,33 @@ swift build
 ## Usage
 
 ```bash
-# Basic usage - scan ./Packages directory
-swift run PackageToTuistProject ./Packages
+PackageToTuistProject ./Path/To/Package
+```
 
+### Examples
+
+```bash
 # Preview without writing files
-swift run PackageToTuistProject ./Packages --dry-run
+PackageToTuistProject ./Packages --dry-run
+
+# Filter to iOS only
+PackageToTuistProject ./Packages --platform ios
+
+# Filter to multiple platforms
+PackageToTuistProject ./Packages --platform ios --platform macos
 
 # Custom bundle ID prefix
-swift run PackageToTuistProject ./Packages --bundle-id-prefix com.mycompany
+PackageToTuistProject ./Packages --bundle-id-prefix com.mycompany
 
 # Use framework instead of staticFramework
-swift run PackageToTuistProject ./Packages --product-type framework
-
-# Verbose output
-swift run PackageToTuistProject ./Packages --verbose
+PackageToTuistProject ./Packages --product-type framework
 ```
 
 ## Options
 
 | Option | Description | Default |
 |--------|-------------|---------|
+| `--platform` | Filter to specific platforms (can be repeated). Values: `ios`, `macos`, `tvos`, `watchos`, `visionos` | all |
 | `--bundle-id-prefix` | Bundle ID prefix for generated targets | `com.example` |
 | `--product-type` | Product type: `staticFramework`, `framework`, `staticLibrary` | `staticFramework` |
 | `--tuist-dir` | Path to Tuist directory for dependency validation | `../Tuist` |
