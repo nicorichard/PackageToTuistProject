@@ -42,6 +42,7 @@ struct ProjectWriter {
 
         // swiftformat:enable all
         // swiftlint:enable all
+        
         """
     }
 
