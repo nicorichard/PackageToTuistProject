@@ -1624,9 +1624,7 @@ struct ProjectWriterTests {
                     dependencies: [],
                     destinations: ".iOS",
                     deploymentTargets: nil,
-                    packageName: "MyProject",
-                    needsTestingSearchPaths: false
-                )
+                    packageName: "MyProject"                )
             ]
         )
 
@@ -1653,9 +1651,7 @@ struct ProjectWriterTests {
                     dependencies: [],
                     destinations: ".macOS",
                     deploymentTargets: nil,
-                    packageName: "MyProject",
-                    needsTestingSearchPaths: false
-                )
+                    packageName: "MyProject"                )
             ]
         )
 
@@ -1674,7 +1670,7 @@ struct ProjectWriterTests {
         #expect(output.contains("Sources/MyTarget/**/*.xcmappingmodel"))
         #expect(output.contains("Sources/MyTarget/**/*.lproj/**"))
         #expect(output.contains("Sources/MyTarget/**/*.metal"))
-        #expect(output.contains("Sources/MyTarget/Resources/**"))
+        #expect(output.contains("Sources/MyTarget/**/Resources/**"))
     }
 
     @Test("generates target with dependencies")
@@ -1696,9 +1692,7 @@ struct ProjectWriterTests {
                     ],
                     destinations: ".iOS",
                     deploymentTargets: nil,
-                    packageName: "MyProject",
-                    needsTestingSearchPaths: false
-                )
+                    packageName: "MyProject"                )
             ]
         )
 
@@ -1725,9 +1719,7 @@ struct ProjectWriterTests {
                     dependencies: [],
                     destinations: ".iOS",
                     deploymentTargets: nil,
-                    packageName: "MyProject",
-                    needsTestingSearchPaths: false
-                ),
+                    packageName: "MyProject"                ),
                 TuistTarget(
                     name: "Target2",
                     product: .staticFramework,
@@ -1736,9 +1728,7 @@ struct ProjectWriterTests {
                     dependencies: [],
                     destinations: ".iOS",
                     deploymentTargets: nil,
-                    packageName: "MyProject",
-                    needsTestingSearchPaths: false
-                )
+                    packageName: "MyProject"                )
             ]
         )
 
@@ -1765,9 +1755,7 @@ struct ProjectWriterTests {
                     dependencies: [],
                     destinations: ".iOS",
                     deploymentTargets: nil,
-                    packageName: "MyProject",
-                    needsTestingSearchPaths: false
-                )
+                    packageName: "MyProject"                )
             ]
         )
 
@@ -1777,34 +1765,8 @@ struct ProjectWriterTests {
         #expect(!output.contains("dependencies:"))
     }
 
-    @Test("includes ENABLE_TESTING_SEARCH_PATHS when needsTestingSearchPaths is true")
-    func includesTestingSearchPathsSetting() {
-        let writer = ProjectWriter()
-        let project = TuistProject(
-            name: "MyProject",
-            path: "/path/to/project",
-            targets: [
-                TuistTarget(
-                    name: "TestHelpers",
-                    product: .staticFramework,
-                    bundleId: "com.example.TestHelpers",
-                    sourcesPath: "Sources/TestHelpers",
-                    dependencies: [],
-                    destinations: ".iOS",
-                    deploymentTargets: nil,
-                    packageName: "MyProject",
-                    needsTestingSearchPaths: true
-                )
-            ]
-        )
-
-        let output = writer.generate(project: project)
-
-        #expect(output.contains("\"ENABLE_TESTING_SEARCH_PATHS\": \"YES\""))
-    }
-
-    @Test("omits ENABLE_TESTING_SEARCH_PATHS when needsTestingSearchPaths is false")
-    func omitsTestingSearchPathsSetting() {
+    @Test("always includes ENABLE_TESTING_SEARCH_PATHS for reliable transitive dependency support")
+    func alwaysIncludesTestingSearchPathsSetting() {
         let writer = ProjectWriter()
         let project = TuistProject(
             name: "MyProject",
@@ -1818,15 +1780,14 @@ struct ProjectWriterTests {
                     dependencies: [],
                     destinations: ".iOS",
                     deploymentTargets: nil,
-                    packageName: "MyProject",
-                    needsTestingSearchPaths: false
+                    packageName: "MyProject"
                 )
             ]
         )
 
         let output = writer.generate(project: project)
 
-        #expect(!output.contains("ENABLE_TESTING_SEARCH_PATHS"))
+        #expect(output.contains("\"ENABLE_TESTING_SEARCH_PATHS\": \"YES\""))
     }
 
     // MARK: - Comma Edge Case Tests
@@ -1846,9 +1807,7 @@ struct ProjectWriterTests {
                     dependencies: [],
                     destinations: ".iOS",
                     deploymentTargets: nil,
-                    packageName: "MyProject",
-                    needsTestingSearchPaths: false
-                )
+                    packageName: "MyProject"                )
             ]
         )
 
@@ -1876,9 +1835,7 @@ struct ProjectWriterTests {
                     dependencies: [.target(name: "OtherTarget")],
                     destinations: ".iOS",
                     deploymentTargets: nil,
-                    packageName: "MyProject",
-                    needsTestingSearchPaths: false
-                )
+                    packageName: "MyProject"                )
             ]
         )
 
@@ -1907,9 +1864,7 @@ struct ProjectWriterTests {
                     dependencies: [],
                     destinations: ".iOS",
                     deploymentTargets: ".iOS(\"15.0\")",
-                    packageName: "MyProject",
-                    needsTestingSearchPaths: false
-                )
+                    packageName: "MyProject"                )
             ]
         )
 
@@ -1936,9 +1891,7 @@ struct ProjectWriterTests {
                     dependencies: [],
                     destinations: ".iOS",
                     deploymentTargets: nil,
-                    packageName: "MyProject",
-                    needsTestingSearchPaths: false
-                )
+                    packageName: "MyProject"                )
             ]
         )
 
@@ -1966,9 +1919,7 @@ struct ProjectWriterTests {
                     dependencies: [],
                     destinations: ".iOS",
                     deploymentTargets: nil,
-                    packageName: "MyProject",
-                    needsTestingSearchPaths: false
-                ),
+                    packageName: "MyProject"                ),
                 TuistTarget(
                     name: "Target2",
                     product: .staticFramework,
@@ -1977,9 +1928,7 @@ struct ProjectWriterTests {
                     dependencies: [.target(name: "Target1")],
                     destinations: ".iOS",
                     deploymentTargets: ".iOS(\"15.0\")",
-                    packageName: "MyProject",
-                    needsTestingSearchPaths: true
-                ),
+                    packageName: "MyProject"                ),
                 TuistTarget(
                     name: "Target3",
                     product: .unitTests,
@@ -1988,9 +1937,7 @@ struct ProjectWriterTests {
                     dependencies: [.target(name: "Target1"), .external(name: "Quick")],
                     destinations: ".iOS",
                     deploymentTargets: nil,
-                    packageName: "MyProject",
-                    needsTestingSearchPaths: true
-                )
+                    packageName: "MyProject"                )
             ]
         )
 
@@ -2014,17 +1961,13 @@ struct ProjectWriterTests {
         let writer = ProjectWriter()
 
         // Test various configurations
-        let configurations: [(deps: [TuistDependency], deployment: String?, testing: Bool)] = [
-            ([], nil, false),
-            ([], nil, true),
-            ([], ".iOS(\"15.0\")", false),
-            ([], ".iOS(\"15.0\")", true),
-            ([.target(name: "A")], nil, false),
-            ([.target(name: "A")], nil, true),
-            ([.target(name: "A")], ".iOS(\"15.0\")", false),
-            ([.target(name: "A")], ".iOS(\"15.0\")", true),
-            ([.target(name: "A"), .external(name: "B")], nil, false),
-            ([.target(name: "A"), .external(name: "B")], ".iOS(\"15.0\")", true),
+        let configurations: [(deps: [TuistDependency], deployment: String?)] = [
+            ([], nil),
+            ([], ".iOS(\"15.0\")"),
+            ([.target(name: "A")], nil),
+            ([.target(name: "A")], ".iOS(\"15.0\")"),
+            ([.target(name: "A"), .external(name: "B")], nil),
+            ([.target(name: "A"), .external(name: "B")], ".iOS(\"15.0\")"),
         ]
 
         for config in configurations {
@@ -2040,14 +1983,13 @@ struct ProjectWriterTests {
                         dependencies: config.deps,
                         destinations: ".iOS",
                         deploymentTargets: config.deployment,
-                        packageName: "TestProject",
-                        needsTestingSearchPaths: config.testing
+                        packageName: "TestProject"
                     )
                 ]
             )
 
             let output = writer.generate(project: project)
-            #expect(!output.contains(",,"), "Double comma found in config: deps=\(config.deps.count), deployment=\(config.deployment ?? "nil"), testing=\(config.testing)")
+            #expect(!output.contains(",,"), "Double comma found in config: deps=\(config.deps.count), deployment=\(config.deployment ?? "nil")")
         }
     }
 }
@@ -2310,141 +2252,6 @@ struct PackageScannerTests {
         #expect(loaded?.platforms?.count == 1)
         #expect(loaded?.products.count == 1)
         #expect(loaded?.hasLibraryProduct == true)
-    }
-}
-
-// MARK: - ImportScanner Tests
-
-@Suite("ImportScanner")
-struct ImportScannerTests {
-    @Test("detects import XCTest")
-    func detectsXCTestImport() {
-        let scanner = ImportScanner()
-        let content = """
-        import Foundation
-        import XCTest
-
-        class MyTests: XCTestCase {}
-        """
-
-        #expect(scanner.containsTestingImport(fileContent: content) == true)
-    }
-
-    @Test("detects import Testing")
-    func detectsTestingImport() {
-        let scanner = ImportScanner()
-        let content = """
-        import Foundation
-        import Testing
-
-        @Suite struct MyTests {}
-        """
-
-        #expect(scanner.containsTestingImport(fileContent: content) == true)
-    }
-
-    @Test("detects import StoreKitTest")
-    func detectsStoreKitTestImport() {
-        let scanner = ImportScanner()
-        let content = """
-        import StoreKit
-        import StoreKitTest
-
-        class StoreTests {}
-        """
-
-        #expect(scanner.containsTestingImport(fileContent: content) == true)
-    }
-
-    @Test("ignores single-line commented imports")
-    func ignoresSingleLineCommentedImports() {
-        let scanner = ImportScanner()
-        let content = """
-        import Foundation
-        // import XCTest
-        // import Testing
-
-        class NotATest {}
-        """
-
-        #expect(scanner.containsTestingImport(fileContent: content) == false)
-    }
-
-    @Test("ignores block commented imports")
-    func ignoresBlockCommentedImports() {
-        let scanner = ImportScanner()
-        let content = """
-        import Foundation
-        /* import XCTest */
-        /*
-        import Testing
-        */
-
-        class NotATest {}
-        """
-
-        #expect(scanner.containsTestingImport(fileContent: content) == false)
-    }
-
-    @Test("returns false when no testing imports present")
-    func noTestingImports() {
-        let scanner = ImportScanner()
-        let content = """
-        import Foundation
-        import UIKit
-
-        class MyView: UIView {}
-        """
-
-        #expect(scanner.containsTestingImport(fileContent: content) == false)
-    }
-
-    @Test("handles empty file")
-    func handlesEmptyFile() {
-        let scanner = ImportScanner()
-        #expect(scanner.containsTestingImport(fileContent: "") == false)
-    }
-
-    @Test("handles file with only whitespace and comments")
-    func handlesWhitespaceOnlyFile() {
-        let scanner = ImportScanner()
-        let content = """
-        // This is a comment
-        /* Another comment */
-
-        """
-
-        #expect(scanner.containsTestingImport(fileContent: content) == false)
-    }
-
-    @Test("detects import even with leading whitespace")
-    func detectsImportWithLeadingWhitespace() {
-        let scanner = ImportScanner()
-        let content = """
-        import Foundation
-            import XCTest
-
-        class MyTests {}
-        """
-
-        #expect(scanner.containsTestingImport(fileContent: content) == true)
-    }
-
-    @Test("does not match partial framework names")
-    func doesNotMatchPartialNames() {
-        let scanner = ImportScanner()
-        let content = """
-        import Foundation
-        import XCTestExtensions
-        import MyTesting
-        import StoreKitTestHelper
-
-        class MyClass {}
-        """
-
-        // These should not match because the import is for a different module
-        // that happens to contain the framework name
-        #expect(scanner.containsTestingImport(fileContent: content) == false)
     }
 }
 
@@ -3279,7 +3086,6 @@ struct ProjectWriterSwiftSettingsTests {
             destinations: ".iOS",
             deploymentTargets: ".iOS(\"15.0\")",
             packageName: "MyPackage",
-            needsTestingSearchPaths: false,
             swiftSettings: nil
         )
 
@@ -3306,7 +3112,6 @@ struct ProjectWriterSwiftSettingsTests {
             destinations: ".iOS",
             deploymentTargets: ".iOS(\"15.0\")",
             packageName: "MyPackage",
-            needsTestingSearchPaths: false,
             swiftSettings: [
                 SwiftSetting(kind: .enableUpcomingFeature("ExistentialAny"))
             ]
@@ -3334,7 +3139,6 @@ struct ProjectWriterSwiftSettingsTests {
             destinations: ".iOS",
             deploymentTargets: ".iOS(\"15.0\")",
             packageName: "MyPackage",
-            needsTestingSearchPaths: false,
             swiftSettings: [
                 SwiftSetting(kind: .enableExperimentalFeature("StrictConcurrency"))
             ]
@@ -3362,7 +3166,6 @@ struct ProjectWriterSwiftSettingsTests {
             destinations: ".iOS",
             deploymentTargets: ".iOS(\"15.0\")",
             packageName: "MyPackage",
-            needsTestingSearchPaths: false,
             swiftSettings: [
                 SwiftSetting(kind: .define("DEBUG_LOGGING"))
             ]
@@ -3390,7 +3193,6 @@ struct ProjectWriterSwiftSettingsTests {
             destinations: ".iOS",
             deploymentTargets: ".iOS(\"15.0\")",
             packageName: "MyPackage",
-            needsTestingSearchPaths: false,
             swiftSettings: [
                 SwiftSetting(kind: .unsafeFlags(["-Xfrontend", "-warn-long-function-bodies=100"]))
             ]
@@ -3418,7 +3220,6 @@ struct ProjectWriterSwiftSettingsTests {
             destinations: ".iOS",
             deploymentTargets: ".iOS(\"15.0\")",
             packageName: "MyPackage",
-            needsTestingSearchPaths: false,
             swiftSettings: [
                 SwiftSetting(kind: .enableUpcomingFeature("ExistentialAny")),
                 SwiftSetting(kind: .enableExperimentalFeature("StrictConcurrency")),
@@ -3457,7 +3258,6 @@ struct ProjectWriterSwiftSettingsTests {
             destinations: ".iOS",
             deploymentTargets: ".iOS(\"15.0\")",
             packageName: "MyPackage",
-            needsTestingSearchPaths: false,
             swiftSettings: [
                 SwiftSetting(kind: .enableUpcomingFeature("ExistentialAny"))
             ]

@@ -136,15 +136,6 @@ struct PackageConverter {
             productType = defaultProductType
         }
 
-        // Determine if target needs testing search paths by scanning for testing framework imports
-        // (Tuist handles test targets automatically, so we only need to detect helper libraries)
-        let scanner = ImportScanner()
-        let needsTestingSearchPaths = scanner.needsTestingSearchPaths(
-            packagePath: packagePath.path,
-            targetPath: target.path,
-            sources: target.sources
-        )
-
         // Build bundle ID
         let bundleId = "\(bundleIdPrefix).\(target.name)"
 
@@ -199,7 +190,6 @@ struct PackageConverter {
             destinations: destinations,
             deploymentTargets: deploymentTargets,
             packageName: package.name,
-            needsTestingSearchPaths: needsTestingSearchPaths,
             swiftSettings: target.swiftSettings
         )
     }
