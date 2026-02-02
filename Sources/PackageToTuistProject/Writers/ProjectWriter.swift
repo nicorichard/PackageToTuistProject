@@ -14,7 +14,7 @@ struct ProjectWriter {
         "**/*.strings",
         "**/*.stringsdict",
         "**/*.metal",
-        "Resources/**"  // Fallback for explicit resources folder
+        "**/Resources/**"  // Fallback for explicit resources folder
     ]
 
     /// Generate Project.swift content for a Tuist project
@@ -42,7 +42,7 @@ struct ProjectWriter {
 
         // swiftformat:enable all
         // swiftlint:enable all
-        
+
         """
     }
 
