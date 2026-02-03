@@ -14,7 +14,8 @@ struct ProjectWriter {
         "**/*.strings",
         "**/*.stringsdict",
         "**/*.metal",
-        "**/Resources/**"  // Fallback for explicit resources folder
+        "Resources/**",  // Resources folder at root level
+        "**/Resources/**"  // Resources folder in subdirectories
     ]
 
     /// Generate Project.swift content for a Tuist project
