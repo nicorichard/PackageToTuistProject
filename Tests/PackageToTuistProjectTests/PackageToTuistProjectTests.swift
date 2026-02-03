@@ -3278,6 +3278,91 @@ struct ProjectWriterSwiftSettingsTests {
     }
 }
 
+// MARK: - ProjectWriter LinkerFlags Tests
+
+@Suite("ProjectWriter LinkerFlags")
+struct ProjectWriterLinkerFlagsTests {
+    @Test("generates OTHER_LDFLAGS with -ObjC for test targets")
+    func generateLinkerFlagsForTestTarget() {
+        let target = TuistTarget(
+            name: "MyTests",
+            product: .unitTests,
+            bundleId: "com.example.MyTests",
+            sourcesPath: "Tests/MyTests",
+            dependencies: [],
+            destinations: ".iOS",
+            deploymentTargets: nil,
+            packageName: "MyPackage"
+        )
+
+        let output = ProjectWriter().generate(project: TuistProject(
+            name: "MyPackage",
+            path: "/path/to/package",
+            targets: [target]
+        ))
+
+        #expect(output.contains("\"OTHER_LDFLAGS\":"))
+        #expect(output.contains("\"-ObjC\""))
+    }
+
+    @Test("does not generate OTHER_LDFLAGS for non-test targets")
+    func noLinkerFlagsForNonTestTarget() {
+        let target = TuistTarget(
+            name: "MyLibrary",
+            product: .staticFramework,
+            bundleId: "com.example.MyLibrary",
+            sourcesPath: "Sources/MyLibrary",
+            dependencies: [],
+            destinations: ".iOS",
+            deploymentTargets: nil,
+            packageName: "MyPackage"
+        )
+
+        let output = ProjectWriter().generate(project: TuistProject(
+            name: "MyPackage",
+            path: "/path/to/package",
+            targets: [target]
+        ))
+
+        #expect(!output.contains("\"OTHER_LDFLAGS\":"))
+    }
+
+    @Test("generates OTHER_LDFLAGS only for test target in mixed project")
+    func linkerFlagsOnlyForTestTargetInMixedProject() {
+        let libraryTarget = TuistTarget(
+            name: "MyLibrary",
+            product: .staticFramework,
+            bundleId: "com.example.MyLibrary",
+            sourcesPath: "Sources/MyLibrary",
+            dependencies: [],
+            destinations: ".iOS",
+            deploymentTargets: nil,
+            packageName: "MyPackage"
+        )
+        let testTarget = TuistTarget(
+            name: "MyTests",
+            product: .unitTests,
+            bundleId: "com.example.MyTests",
+            sourcesPath: "Tests/MyTests",
+            dependencies: [],
+            destinations: ".iOS",
+            deploymentTargets: nil,
+            packageName: "MyPackage"
+        )
+
+        let output = ProjectWriter().generate(project: TuistProject(
+            name: "MyPackage",
+            path: "/path/to/package",
+            targets: [libraryTarget, testTarget]
+        ))
+
+        // The output should contain OTHER_LDFLAGS exactly once (for the test target)
+        let matches = output.components(separatedBy: "\"OTHER_LDFLAGS\":").count - 1
+        #expect(matches == 1)
+        #expect(output.contains("\"-ObjC\""))
+    }
+}
+
 // MARK: - TuistPackageValidator Tests
 
 @Suite("TuistPackageValidator")
