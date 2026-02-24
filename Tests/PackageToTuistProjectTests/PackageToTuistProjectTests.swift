@@ -3461,6 +3461,57 @@ struct TuistPackageValidatorTests {
         validator.printWarnings(result: result)
     }
 
+    @Test("hasIssues returns false when no missing or mismatched dependencies")
+    func hasIssuesReturnsFalseWhenEmpty() {
+        let result = TuistPackageValidator.ValidationResult(
+            missingDependencies: [],
+            mismatchedDependencies: []
+        )
+        #expect(result.hasIssues == false)
+    }
+
+    @Test("hasIssues returns true when there are missing dependencies")
+    func hasIssuesReturnsTrueWithMissingDeps() {
+        let result = TuistPackageValidator.ValidationResult(
+            missingDependencies: [
+                ExternalDependency(
+                    identity: "test",
+                    url: "https://github.com/example/test.git",
+                    requirement: .exact("1.0.0")
+                )
+            ],
+            mismatchedDependencies: []
+        )
+        #expect(result.hasIssues == true)
+    }
+
+    @Test("hasIssues returns true when there are mismatched dependencies")
+    func hasIssuesReturnsTrueWithMismatchedDeps() {
+        let required = ExternalDependency(
+            identity: "test",
+            url: "https://github.com/example/test.git",
+            requirement: .exact("2.0.0")
+        )
+        let existing = ExternalDependency(
+            identity: "test",
+            url: "https://github.com/example/test.git",
+            requirement: .exact("1.0.0")
+        )
+        let result = TuistPackageValidator.ValidationResult(
+            missingDependencies: [],
+            mismatchedDependencies: [(required: required, existing: existing)]
+        )
+        #expect(result.hasIssues == true)
+    }
+
+    @Test("ValidationError provides descriptive error message")
+    func validationErrorMessage() {
+        let error = ConvertCommand.ValidationError.dependencyIssuesFound(missing: 2, mismatched: 1)
+        let message = error.errorDescription ?? ""
+        #expect(message.contains("2"))
+        #expect(message.contains("1"))
+    }
+
     @Test("versionString returns correct value for range")
     func versionStringForRange() {
         let req = ExternalDependency.DependencyRequirement.range(from: "1.0.0", to: "2.0.0")

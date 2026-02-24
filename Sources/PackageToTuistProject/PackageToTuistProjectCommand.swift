@@ -32,6 +32,9 @@ struct PackageToTuistProject: AsyncParsableCommand {
     @Option(name: .long, parsing: .upToNextOption, help: "Filter to specific platforms (can be repeated). Valid values: ios, macos, tvos, watchos, visionos")
     var platform: [SupportedPlatform] = []
 
+    @Flag(name: .long, help: "Fail with a non-zero exit code if dependency validation finds issues")
+    var strictDeps: Bool = false
+
     func run() async throws {
         let command = ConvertCommand(
             rootDirectory: rootDirectory,
@@ -41,7 +44,8 @@ struct PackageToTuistProject: AsyncParsableCommand {
             dryRun: dryRun,
             verbose: verbose,
             force: force,
-            platformFilter: platform.isEmpty ? nil : Set(platform)
+            platformFilter: platform.isEmpty ? nil : Set(platform),
+            strictDeps: strictDeps
         )
         try await command.execute()
     }

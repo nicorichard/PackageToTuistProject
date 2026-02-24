@@ -6,6 +6,10 @@ struct TuistPackageValidator {
     struct ValidationResult {
         let missingDependencies: [ExternalDependency]
         let mismatchedDependencies: [(required: ExternalDependency, existing: ExternalDependency)]
+
+        var hasIssues: Bool {
+            !missingDependencies.isEmpty || !mismatchedDependencies.isEmpty
+        }
     }
 
     let verbose: Bool

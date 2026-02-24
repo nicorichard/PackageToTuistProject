@@ -53,6 +53,18 @@ actor ProcessingProgress {
 
 /// Main command that orchestrates the conversion process
 struct ConvertCommand {
+
+    enum ValidationError: LocalizedError {
+        case dependencyIssuesFound(missing: Int, mismatched: Int)
+
+        var errorDescription: String? {
+            switch self {
+            case .dependencyIssuesFound(let missing, let mismatched):
+                return "Dependency validation failed: \(missing) missing, \(mismatched) mismatched"
+            }
+        }
+    }
+
     let rootDirectory: String
     let bundleIdPrefix: String
     let productType: String
@@ -61,6 +73,7 @@ struct ConvertCommand {
     let verbose: Bool
     let force: Bool
     let platformFilter: Set<SupportedPlatform>?
+    let strictDeps: Bool
 
     /// Maximum number of concurrent package loads
     private let maxConcurrentLoads = 8
@@ -73,7 +86,8 @@ struct ConvertCommand {
         dryRun: Bool,
         verbose: Bool,
         force: Bool = false,
-        platformFilter: Set<SupportedPlatform>? = nil
+        platformFilter: Set<SupportedPlatform>? = nil,
+        strictDeps: Bool = false
     ) {
         self.rootDirectory = rootDirectory
         self.bundleIdPrefix = bundleIdPrefix
@@ -83,6 +97,7 @@ struct ConvertCommand {
         self.verbose = verbose
         self.force = force
         self.platformFilter = platformFilter
+        self.strictDeps = strictDeps
     }
 
     /// Check if a single package needs regeneration.
@@ -365,6 +380,13 @@ struct ConvertCommand {
                 customTuistDir: tuistDir
             )
             validator.printWarnings(result: result)
+
+            if strictDeps && result.hasIssues {
+                throw ValidationError.dependencyIssuesFound(
+                    missing: result.missingDependencies.count,
+                    mismatched: result.mismatchedDependencies.count
+                )
+            }
         }
     }
 
