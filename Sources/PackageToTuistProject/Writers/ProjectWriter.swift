@@ -48,24 +48,24 @@ struct ProjectWriter {
     }
 
     private func generateTarget(_ target: TuistTarget) -> String {
-        // Collect all arguments as (label, value) pairs
-        var arguments: [(String, String)] = []
+        // Collect all arguments as labeled pairs
+        var arguments: [LabeledArg] = []
 
-        arguments.append(("name", "\"\(target.name)\""))
-        arguments.append(("destinations", target.destinations))
-        arguments.append(("product", target.product.swiftCode))
-        arguments.append(("bundleId", "\"\(target.bundleId)\""))
+        arguments.append(.init(label: "name", value: "\"\(target.name)\""))
+        arguments.append(.init(label: "destinations", value: target.destinations))
+        arguments.append(.init(label: "product", value: target.product.swiftCode))
+        arguments.append(.init(label: "bundleId", value: "\"\(target.bundleId)\""))
 
         if let deploymentTargets = target.deploymentTargets {
-            arguments.append(("deploymentTargets", deploymentTargets))
+            arguments.append(.init(label: "deploymentTargets", value: deploymentTargets))
         }
 
-        arguments.append(("sources", "[\"\(target.sourcesPath)/**\"]"))
-        arguments.append(("resources", generateResourcesGlobs(for: target.sourcesPath)))
+        arguments.append(.init(label: "sources", value: "[\"\(target.sourcesPath)/**\"]"))
+        arguments.append(.init(label: "resources", value: generateResourcesGlobs(for: target.sourcesPath)))
 
         if !target.dependencies.isEmpty {
             let depsCode = target.dependencies.map { $0.swiftCode }.joined(separator: ",\n")
-            arguments.append(("dependencies", """
+            arguments.append(.init(label: "dependencies", value: """
                 [
                     \(indented: depsCode)
                 ]
@@ -88,26 +88,14 @@ struct ProjectWriter {
             settingsPairs.append("\"OTHER_LDFLAGS\": [\"-ObjC\"]")
         }
         let settingsCode = settingsPairs.joined(separator: ",\n")
-        arguments.append(("settings", """
+        arguments.append(.init(label: "settings", value: """
             .settings(base: [
                 \(indented: settingsCode)
             ])
             """))
 
         // Single place where commas are added - join all arguments
-        // Indent multi-line values so all lines align properly
-        let baseIndent = "            " // 12 spaces for argument level
-        let argumentsCode = arguments
-            .map { label, value in
-                let indentedValue = value.split(separator: "\n", omittingEmptySubsequences: false)
-                    .enumerated()
-                    .map { index, line in
-                        index == 0 ? String(line) : baseIndent + String(line)
-                    }
-                    .joined(separator: "\n")
-                return "\(baseIndent)\(label): \(indentedValue)"
-            }
-            .joined(separator: ",\n")
+        let argumentsCode = arguments.formatted(indent: "            ")
 
         return """
                 .target(
