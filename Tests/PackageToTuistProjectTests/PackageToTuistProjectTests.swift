@@ -103,6 +103,15 @@ struct LoadingProgressTests {
         #expect(completed == 1)
     }
 
+    @Test("incrementSkipped increases completed count")
+    func incrementSkippedIncreasesCount() async {
+        let progress = LoadingProgress(total: 5)
+
+        await progress.incrementSkipped(packageName: "SkippedPackage", reason: "no library product")
+        let completed = await progress.getCompleted()
+        #expect(completed == 1)
+    }
+
     @Test("handles concurrent increments correctly")
     func handlesConcurrentIncrements() async {
         let progress = LoadingProgress(total: 100)
@@ -120,17 +129,18 @@ struct LoadingProgressTests {
         #expect(completed == 100)
     }
 
-    @Test("mixed increment and incrementFailed works correctly")
+    @Test("mixed increment, incrementFailed, and incrementSkipped works correctly")
     func mixedIncrements() async {
         let progress = LoadingProgress(total: 10)
 
         await progress.increment(packageName: "Success1")
         await progress.incrementFailed(path: "Failed1", error: "Error")
+        await progress.incrementSkipped(packageName: "Skipped1", reason: "no library product")
         await progress.increment(packageName: "Success2")
         await progress.incrementFailed(path: "Failed2", error: "Error")
 
         let completed = await progress.getCompleted()
-        #expect(completed == 4)
+        #expect(completed == 5)
     }
 }
 

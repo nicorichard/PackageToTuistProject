@@ -22,6 +22,12 @@ actor LoadingProgress {
         fflush(stdout)
     }
 
+    func incrementSkipped(packageName: String, reason: String) {
+        completed += 1
+        print("  [\(completed)/\(total)] Skipped \(packageName) (\(reason))")
+        fflush(stdout)
+    }
+
     /// Get current progress (for testing)
     func getCompleted() -> Int {
         return completed
@@ -246,7 +252,7 @@ struct ConvertCommand {
             let description = try await scanner.loadPackageDescription(at: packagePath)
             // Skip packages without library products
             guard description.hasLibraryProduct else {
-                await progress.incrementFailed(path: packageDirName, error: "No library product found, skipping")
+                await progress.incrementSkipped(packageName: packageDirName, reason: "no library product")
                 return (packagePath, nil)
             }
             await progress.increment(packageName: description.name)
