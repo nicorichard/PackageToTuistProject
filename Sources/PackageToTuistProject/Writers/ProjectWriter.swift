@@ -3,21 +3,6 @@ import Foundation
 /// Generates Project.swift content for Tuist
 struct ProjectWriter {
 
-    /// Resource patterns that match SPM's automatic resource detection
-    private static let spmResourcePatterns = [
-        "**/*.xcassets",
-        "**/*.xib",
-        "**/*.storyboard",
-        "**/*.xcdatamodeld",
-        "**/*.xcmappingmodel",
-        "**/*.lproj/**",
-        "**/*.strings",
-        "**/*.stringsdict",
-        "**/*.metal",
-        "Resources/**",  // Resources folder at root level
-        "**/Resources/**"  // Resources folder in subdirectories
-    ]
-
     /// Generate Project.swift content for a Tuist project
     func generate(project: TuistProject) -> String {
         let targetCodes = project.targets.map { generateTarget($0) }
@@ -60,8 +45,11 @@ struct ProjectWriter {
             arguments.append(.init(label: "deploymentTargets", value: deploymentTargets))
         }
 
-        arguments.append(.init(label: "sources", value: "[\"\(target.sourcesPath)/**\"]"))
-        arguments.append(.init(label: "resources", value: generateResourcesGlobs(for: target.sourcesPath)))
+        arguments.append(.init(label: "buildableFolders", value: """
+            [
+                .folder("\(target.sourcesPath)")
+            ]
+            """))
 
         if !target.dependencies.isEmpty {
             let depsCode = target.dependencies.map { $0.swiftCode }.joined(separator: ",\n")
@@ -102,15 +90,6 @@ struct ProjectWriter {
         \(argumentsCode)
                 )
         """
-    }
-
-    private func generateResourcesGlobs(for sourcesPath: String) -> String {
-        let patterns = Self.spmResourcePatterns.map { "\"\(sourcesPath)/\($0)\"" }.joined(separator: ",\n")
-        return """
-            [
-                \(indented: patterns)
-            ]
-            """
     }
 
     /// Generate OTHER_SWIFT_FLAGS array including package name and swift settings

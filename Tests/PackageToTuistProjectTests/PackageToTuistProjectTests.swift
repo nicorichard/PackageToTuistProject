@@ -1671,16 +1671,10 @@ struct ProjectWriterTests {
         #expect(output.contains("destinations: .macOS"))
         #expect(output.contains("product: .framework"))
         #expect(output.contains("bundleId: \"com.example.MyTarget\""))
-        #expect(output.contains("sources: [\"Sources/MyTarget/**\"]"))
-        // Check that SPM resource patterns are included
-        #expect(output.contains("Sources/MyTarget/**/*.xcassets"))
-        #expect(output.contains("Sources/MyTarget/**/*.xib"))
-        #expect(output.contains("Sources/MyTarget/**/*.storyboard"))
-        #expect(output.contains("Sources/MyTarget/**/*.xcdatamodeld"))
-        #expect(output.contains("Sources/MyTarget/**/*.xcmappingmodel"))
-        #expect(output.contains("Sources/MyTarget/**/*.lproj/**"))
-        #expect(output.contains("Sources/MyTarget/**/*.metal"))
-        #expect(output.contains("Sources/MyTarget/**/Resources/**"))
+        // buildableFolders replaces both sources and resources
+        #expect(output.contains(".folder(\"Sources/MyTarget\")"))
+        #expect(!output.contains("sources:"))
+        #expect(!output.contains("resources:"))
     }
 
     @Test("generates target with dependencies")
@@ -1826,7 +1820,6 @@ struct ProjectWriterTests {
         // Should not have double commas
         #expect(!output.contains(",,"))
         // Should not have missing commas before settings (check for valid pattern)
-        #expect(output.contains("resources:"))
         #expect(output.contains("settings:"))
     }
 
@@ -1853,8 +1846,7 @@ struct ProjectWriterTests {
 
         // Should not have double commas
         #expect(!output.contains(",,"))
-        // Check resources and dependencies are both present
-        #expect(output.contains("resources:"))
+        // Check dependencies are present
         #expect(output.contains("dependencies:"))
         #expect(output.contains("settings:"))
     }
@@ -1883,7 +1875,7 @@ struct ProjectWriterTests {
         // Should not have double commas
         #expect(!output.contains(",,"))
         #expect(output.contains("deploymentTargets:"))
-        #expect(output.contains("sources:"))
+        #expect(output.contains("buildableFolders:"))
     }
 
     @Test("target without deploymentTargets has valid comma placement")
@@ -1911,7 +1903,7 @@ struct ProjectWriterTests {
         #expect(!output.contains(",,"))
         #expect(!output.contains("deploymentTargets:"))
         #expect(output.contains("bundleId:"))
-        #expect(output.contains("sources:"))
+        #expect(output.contains("buildableFolders:"))
     }
 
     @Test("multiple targets have correct commas between them")
