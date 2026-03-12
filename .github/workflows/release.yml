@@ -19,6 +19,11 @@ jobs:
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
+      - name: Inject version into source
+        run: |
+          sed -i '' 's/let toolVersion = ".*"/let toolVersion = "${{ steps.version.outputs.VERSION }}"/' \
+            Sources/PackageToTuistProject/PackageToTuistProjectCommand.swift
+
       - name: Build for arm64
         run: swift build -c release --arch arm64
 

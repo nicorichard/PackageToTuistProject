@@ -1,5 +1,17 @@
 import Foundation
 
+/// Wrapper that includes the tool version alongside the cached package description.
+/// When the tool version changes, cached files are automatically invalidated.
+struct CachedPackageDescription: Codable {
+    let version: String
+    let packageDescription: PackageDescription
+
+    enum CodingKeys: String, CodingKey {
+        case version = "tool_version"
+        case packageDescription = "package_description"
+    }
+}
+
 /// Reusable utility for loading package descriptions from any Package.swift
 /// Uses `swift package describe --type json` and supports caching
 struct PackageDescriptionLoader {
@@ -44,7 +56,7 @@ struct PackageDescriptionLoader {
         return description
     }
 
-    /// Load cached description if available and still valid (cache newer than Package.swift)
+    /// Load cached description if available and still valid (cache newer than Package.swift, same tool version)
     func loadCachedDescription(at packagePath: URL) -> PackageDescription? {
         let cacheFile = packagePath.deletingLastPathComponent()
             .appendingPathComponent(Self.cacheFileName)
@@ -59,7 +71,17 @@ struct PackageDescriptionLoader {
 
         do {
             let data = try Data(contentsOf: cacheFile)
-            return try JSONDecoder().decode(PackageDescription.self, from: data)
+            let cached = try JSONDecoder().decode(CachedPackageDescription.self, from: data)
+
+            // Invalidate cache if tool version has changed
+            guard cached.version == toolVersion else {
+                if verbose {
+                    print("Cache version mismatch for \(packagePath.path): \(cached.version) != \(toolVersion)")
+                }
+                return nil
+            }
+
+            return cached.packageDescription
         } catch {
             if verbose {
                 print("Cache read failed for \(packagePath.path): \(error.localizedDescription)")
@@ -68,13 +90,14 @@ struct PackageDescriptionLoader {
         }
     }
 
-    /// Write description to cache file
+    /// Write description to cache file, including the current tool version
     func cacheDescription(_ description: PackageDescription, at packagePath: URL) throws {
         let cacheFile = packagePath.deletingLastPathComponent()
             .appendingPathComponent(Self.cacheFileName)
+        let cached = CachedPackageDescription(version: toolVersion, packageDescription: description)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let data = try encoder.encode(description)
+        let data = try encoder.encode(cached)
         try data.write(to: cacheFile)
     }
 
