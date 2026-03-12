@@ -21,6 +21,9 @@ struct ProjectWriter {
             options: .options(
                 disableSynthesizedResourceAccessors: true
             ),
+            settings: .settings(base: [
+                "EXCLUDED_SOURCE_FILE_NAMES": ".*"
+            ]),
             targets: [
         \(targetCodes.joined(separator: ",\n"))
             ]

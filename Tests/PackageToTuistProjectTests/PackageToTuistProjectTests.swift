@@ -1794,6 +1794,36 @@ struct ProjectWriterTests {
         #expect(output.contains("\"ENABLE_TESTING_SEARCH_PATHS\": \"YES\""))
     }
 
+    @Test("excludes dotfiles at project level to cover Tuist-generated resource bundle targets")
+    func excludesDotfilesAtProjectLevel() {
+        let writer = ProjectWriter()
+        let project = TuistProject(
+            name: "MyProject",
+            path: "/path/to/project",
+            targets: [
+                TuistTarget(
+                    name: "MyTarget",
+                    product: .staticFramework,
+                    bundleId: "com.example.MyTarget",
+                    sourcesPath: "Sources/MyTarget",
+                    dependencies: [],
+                    destinations: ".iOS",
+                    deploymentTargets: nil,
+                    packageName: "MyProject"
+                )
+            ]
+        )
+
+        let output = writer.generate(project: project)
+
+        // Project-level setting so it applies to all targets including auto-generated bundle targets
+        #expect(output.contains("""
+            settings: .settings(base: [
+                "EXCLUDED_SOURCE_FILE_NAMES": ".*"
+            ]),
+        """))
+    }
+
     // MARK: - Comma Edge Case Tests
 
     @Test("target with no dependencies has valid comma placement")
