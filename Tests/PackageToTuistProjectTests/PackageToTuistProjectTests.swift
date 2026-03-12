@@ -2166,7 +2166,7 @@ struct PackageScannerTests {
         // Create cache file first (older)
         let cachePath = tempDir.appendingPathComponent(PackageScanner.cacheFileName)
         let cacheContent = """
-        {"name":"TestPackage","path":"/test","products":[],"targets":[],"dependencies":null}
+        {"tool_version":"\(toolVersion)","package_description":{"name":"TestPackage","path":"/test","products":[],"targets":[],"dependencies":null}}
         """
         try cacheContent.write(to: cachePath, atomically: true, encoding: .utf8)
 
@@ -2198,7 +2198,7 @@ struct PackageScannerTests {
         // Create cache file second (newer)
         let cachePath = tempDir.appendingPathComponent(PackageScanner.cacheFileName)
         let cacheContent = """
-        {"name":"CachedPackage","path":"/cached","products":[],"targets":[]}
+        {"tool_version":"\(toolVersion)","package_description":{"name":"CachedPackage","path":"/cached","products":[],"targets":[]}}
         """
         try cacheContent.write(to: cachePath, atomically: true, encoding: .utf8)
 
@@ -2238,11 +2238,12 @@ struct PackageScannerTests {
         let cachePath = tempDir.appendingPathComponent(PackageScanner.cacheFileName)
         #expect(FileManager.default.fileExists(atPath: cachePath.path))
 
-        // Verify it can be read back
+        // Verify it can be read back as CachedPackageDescription with version
         let data = try Data(contentsOf: cachePath)
-        let decoded = try JSONDecoder().decode(PackageDescription.self, from: data)
-        #expect(decoded.name == "TestPackage")
-        #expect(decoded.toolsVersion == "5.9")
+        let decoded = try JSONDecoder().decode(CachedPackageDescription.self, from: data)
+        #expect(decoded.version == toolVersion)
+        #expect(decoded.packageDescription.name == "TestPackage")
+        #expect(decoded.packageDescription.toolsVersion == "5.9")
     }
 
     @Test("cacheDescription and loadCachedDescription round trip")
@@ -3617,10 +3618,13 @@ struct PackageDescriptionLoaderTests {
         let cacheFile = tempDir.appendingPathComponent(PackageDescriptionLoader.cacheFileName)
         let cacheJSON = """
         {
-            "name": "TestPackage",
-            "path": "/path",
-            "products": [],
-            "targets": []
+            "tool_version": "\(toolVersion)",
+            "package_description": {
+                "name": "TestPackage",
+                "path": "/path",
+                "products": [],
+                "targets": []
+            }
         }
         """
         try cacheJSON.write(to: cacheFile, atomically: true, encoding: .utf8)
@@ -3655,10 +3659,13 @@ struct PackageDescriptionLoaderTests {
         let cacheFile = tempDir.appendingPathComponent(PackageDescriptionLoader.cacheFileName)
         let cacheJSON = """
         {
-            "name": "TestPackage",
-            "path": "/path",
-            "products": [],
-            "targets": []
+            "tool_version": "\(toolVersion)",
+            "package_description": {
+                "name": "TestPackage",
+                "path": "/path",
+                "products": [],
+                "targets": []
+            }
         }
         """
         try cacheJSON.write(to: cacheFile, atomically: true, encoding: .utf8)
@@ -3697,10 +3704,77 @@ struct PackageDescriptionLoaderTests {
         let cacheFile = tempDir.appendingPathComponent(PackageDescriptionLoader.cacheFileName)
         #expect(FileManager.default.fileExists(atPath: cacheFile.path))
 
-        // Verify we can read it back
+        // Verify we can read it back as CachedPackageDescription with version
         let data = try Data(contentsOf: cacheFile)
-        let decoded = try JSONDecoder().decode(PackageDescription.self, from: data)
-        #expect(decoded.name == "CachedPackage")
+        let decoded = try JSONDecoder().decode(CachedPackageDescription.self, from: data)
+        #expect(decoded.version == toolVersion)
+        #expect(decoded.packageDescription.name == "CachedPackage")
+    }
+
+    @Test("loadCachedDescription returns nil when cache has different tool version")
+    func loadCachedDescriptionReturnsNilWhenVersionMismatch() throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        // Create Package.swift first (will be older)
+        let packagePath = tempDir.appendingPathComponent("Package.swift")
+        try "// swift-tools-version: 5.9".write(to: packagePath, atomically: true, encoding: .utf8)
+
+        // Sleep briefly to ensure different timestamps
+        Thread.sleep(forTimeInterval: 0.1)
+
+        // Create cache file with an old tool version
+        let cacheFile = tempDir.appendingPathComponent(PackageDescriptionLoader.cacheFileName)
+        let cacheJSON = """
+        {
+            "tool_version": "0.9.0",
+            "package_description": {
+                "name": "TestPackage",
+                "path": "/path",
+                "products": [],
+                "targets": []
+            }
+        }
+        """
+        try cacheJSON.write(to: cacheFile, atomically: true, encoding: .utf8)
+
+        let loader = PackageDescriptionLoader()
+        let result = loader.loadCachedDescription(at: packagePath)
+
+        #expect(result == nil)
+    }
+
+    @Test("loadCachedDescription returns nil when cache has no tool version (legacy format)")
+    func loadCachedDescriptionReturnsNilForLegacyFormat() throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        // Create Package.swift first (will be older)
+        let packagePath = tempDir.appendingPathComponent("Package.swift")
+        try "// swift-tools-version: 5.9".write(to: packagePath, atomically: true, encoding: .utf8)
+
+        // Sleep briefly to ensure different timestamps
+        Thread.sleep(forTimeInterval: 0.1)
+
+        // Create cache file in the old format (no wrapper)
+        let cacheFile = tempDir.appendingPathComponent(PackageDescriptionLoader.cacheFileName)
+        let cacheJSON = """
+        {
+            "name": "TestPackage",
+            "path": "/path",
+            "products": [],
+            "targets": []
+        }
+        """
+        try cacheJSON.write(to: cacheFile, atomically: true, encoding: .utf8)
+
+        let loader = PackageDescriptionLoader()
+        let result = loader.loadCachedDescription(at: packagePath)
+
+        // Legacy format won't decode as CachedPackageDescription, so cache is invalidated
+        #expect(result == nil)
     }
 
     @Test("LoaderError has correct descriptions")

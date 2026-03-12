@@ -1,48 +1,51 @@
 {
-  "dependencies" : [
+  "package_description" : {
+    "dependencies" : [
 
-  ],
-  "manifest_display_name" : "MultiPlatform",
-  "name" : "MultiPlatform",
-  "path" : "\/Users\/nico\/Projects\/PackageToTuistProject\/Tests\/Fixtures\/MultiPlatform",
-  "platforms" : [
-    {
-      "name" : "ios",
-      "version" : "15.0"
-    },
-    {
-      "name" : "macos",
-      "version" : "12.0"
-    },
-    {
-      "name" : "tvos",
-      "version" : "15.0"
-    }
-  ],
-  "products" : [
-    {
-      "name" : "MultiPlatform",
-      "targets" : [
-        "MultiPlatform"
-      ],
-      "type" : {
-        "library" : [
-          "automatic"
-        ]
+    ],
+    "manifest_display_name" : "MultiPlatform",
+    "name" : "MultiPlatform",
+    "path" : "\/Users\/nico\/Projects\/PackageToTuistProject\/Tests\/Fixtures\/MultiPlatform",
+    "platforms" : [
+      {
+        "name" : "ios",
+        "version" : "15.0"
+      },
+      {
+        "name" : "macos",
+        "version" : "12.0"
+      },
+      {
+        "name" : "tvos",
+        "version" : "15.0"
       }
-    }
-  ],
-  "targets" : [
-    {
-      "c99name" : "MultiPlatform",
-      "module_type" : "SwiftTarget",
-      "name" : "MultiPlatform",
-      "path" : "Sources\/MultiPlatform",
-      "sources" : [
-        "MultiPlatform.swift"
-      ],
-      "type" : "library"
-    }
-  ],
-  "tools_version" : "5.9"
+    ],
+    "products" : [
+      {
+        "name" : "MultiPlatform",
+        "targets" : [
+          "MultiPlatform"
+        ],
+        "type" : {
+          "library" : [
+            "automatic"
+          ]
+        }
+      }
+    ],
+    "targets" : [
+      {
+        "c99name" : "MultiPlatform",
+        "module_type" : "SwiftTarget",
+        "name" : "MultiPlatform",
+        "path" : "Sources\/MultiPlatform",
+        "sources" : [
+          "MultiPlatform.swift"
+        ],
+        "type" : "library"
+      }
+    ],
+    "tools_version" : "5.9"
+  },
+  "tool_version" : "0.0.6"
 }
