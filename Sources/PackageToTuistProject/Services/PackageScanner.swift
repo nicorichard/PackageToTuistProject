@@ -179,12 +179,12 @@ struct PackageScanner {
 
         // Read pipe output in buffered chunks (not byte-by-byte) to avoid blocking
         // the process when the pipe buffer fills up.
-        let outputTask = Task.detached {
-            outputPipe.fileHandleForReading.readDataToEndOfFile()
+        let outputTask = Task {
+            try outputPipe.fileHandleForReading.readToEnd() ?? Data()
         }
 
-        let errorTask = Task.detached {
-            errorPipe.fileHandleForReading.readDataToEndOfFile()
+        let errorTask = Task {
+            try errorPipe.fileHandleForReading.readToEnd() ?? Data()
         }
 
         try process.run()
@@ -203,8 +203,8 @@ struct PackageScanner {
             throw ScannerError.timeout(packageDirectory.path, timeoutSeconds)
         }
 
-        let outputData = await outputTask.value
-        _ = await errorTask.value
+        let outputData = try await outputTask.value
+        _ = try await errorTask.value
 
         if process.terminationStatus != 0 {
             throw ScannerError.packageDumpFailed(packageDirectory.path)

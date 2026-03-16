@@ -121,12 +121,12 @@ struct PackageDescriptionLoader {
 
         // Read pipe output in buffered chunks (not byte-by-byte) to avoid blocking
         // the process when the pipe buffer fills up.
-        let outputTask = Task.detached {
-            outputPipe.fileHandleForReading.readDataToEndOfFile()
+        let outputTask = Task {
+            try outputPipe.fileHandleForReading.readToEnd() ?? Data()
         }
 
-        let errorTask = Task.detached {
-            errorPipe.fileHandleForReading.readDataToEndOfFile()
+        let errorTask = Task {
+            try errorPipe.fileHandleForReading.readToEnd() ?? Data()
         }
 
         try process.run()
@@ -151,8 +151,8 @@ struct PackageDescriptionLoader {
             throw LoaderError.timeout(packageDirectory.path, timeoutSeconds)
         }
 
-        let outputData = await outputTask.value
-        let errorData = await errorTask.value
+        let outputData = try await outputTask.value
+        let errorData = try await errorTask.value
 
         if process.terminationStatus != 0 {
             let errorMessage = String(data: errorData, encoding: .utf8) ?? "Unknown error"

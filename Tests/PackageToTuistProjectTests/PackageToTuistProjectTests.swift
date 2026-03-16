@@ -3771,8 +3771,8 @@ struct PackageDescriptionLoaderTests {
         process.standardOutput = outputPipe
         process.standardError = Pipe()
 
-        let outputTask = Task.detached {
-            outputPipe.fileHandleForReading.readDataToEndOfFile()
+        let outputTask = Task {
+            try outputPipe.fileHandleForReading.readToEnd() ?? Data()
         }
 
         try process.run()
@@ -3780,7 +3780,7 @@ struct PackageDescriptionLoaderTests {
         let completed = await loader.waitForProcessWithTimeout(process: process, timeoutSeconds: 10)
         #expect(completed == true)
 
-        let data = await outputTask.value
+        let data = try await outputTask.value
         #expect(data.count >= 200_000)
     }
 
