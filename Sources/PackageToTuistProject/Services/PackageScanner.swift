@@ -99,12 +99,10 @@ struct PackageScanner {
             return cached
         }
 
-        // Cache miss - load from swift package describe and dump-package in parallel
-        async let describeTask = loader.loadPackageDescriptionFromSwift(at: packagePath)
-        async let dumpTask = loadPackageDump(at: packagePath)
-
-        let description = try await describeTask
-        let dumpDescription = try? await dumpTask
+        // !!!: Running these in parallel causes SPM workspace lock contention since both
+        // commands acquire a file lock on .build.
+        let description = try await loader.loadPackageDescriptionFromSwift(at: packagePath)
+        let dumpDescription = try? await loadPackageDump(at: packagePath)
 
         // Merge swiftSettings from dump into describe result
         let mergedDescription = mergeSwiftSettings(describe: description, dump: dumpDescription)
