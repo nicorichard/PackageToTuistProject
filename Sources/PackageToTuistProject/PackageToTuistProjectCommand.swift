@@ -1,11 +1,15 @@
 import ArgumentParser
 
+/// The current version of the PackageToTuistProject tool.
+/// Used in cache files to auto-invalidate when a new release is made.
+let toolVersion = "0.0.6"
+
 @main
 struct PackageToTuistProject: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "PackageToTuistProject",
         abstract: "Convert Swift Package.swift files to Tuist Project.swift files",
-        version: "1.0.0"
+        version: toolVersion
     )
 
     @Argument(help: "Root directory containing Swift packages")
