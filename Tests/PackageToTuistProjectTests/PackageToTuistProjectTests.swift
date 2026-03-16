@@ -3755,6 +3755,35 @@ struct PackageDescriptionLoaderTests {
         #expect(result == nil)
     }
 
+    @Test("waitForProcessWithTimeout completes for process producing large stdout output")
+    func largeOutputDoesNotTimeout() async throws {
+        let loader = PackageDescriptionLoader(verbose: false, timeoutSeconds: 10)
+
+        // Use a process that produces output larger than the typical 16KB pipe buffer.
+        // If pipe reading is byte-by-byte, the process blocks on the full pipe buffer
+        // and the timeout fires. Buffered reading avoids this.
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        // Generate ~200KB of output (well above 16KB pipe buffer)
+        process.arguments = ["python3", "-c", "print('x' * 200000)"]
+
+        let outputPipe = Pipe()
+        process.standardOutput = outputPipe
+        process.standardError = Pipe()
+
+        let outputTask = Task.detached {
+            outputPipe.fileHandleForReading.readDataToEndOfFile()
+        }
+
+        try process.run()
+
+        let completed = await loader.waitForProcessWithTimeout(process: process, timeoutSeconds: 10)
+        #expect(completed == true)
+
+        let data = await outputTask.value
+        #expect(data.count >= 200_000)
+    }
+
     @Test("LoaderError has correct descriptions")
     func loaderErrorDescriptions() {
         let timeoutError = PackageDescriptionLoader.LoaderError.timeout("/path/to/package", 30)

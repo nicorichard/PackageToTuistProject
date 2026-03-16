@@ -177,21 +177,14 @@ struct PackageScanner {
             print("Loading package dump: \(packageDirectory.path)")
         }
 
-        // Create tasks to read output asynchronously
-        let outputTask = Task {
-            var data = Data()
-            for try await chunk in outputPipe.fileHandleForReading.bytes {
-                data.append(chunk)
-            }
-            return data
+        // Read pipe output in buffered chunks (not byte-by-byte) to avoid blocking
+        // the process when the pipe buffer fills up.
+        let outputTask = Task.detached {
+            outputPipe.fileHandleForReading.readDataToEndOfFile()
         }
 
-        let errorTask = Task {
-            var data = Data()
-            for try await chunk in errorPipe.fileHandleForReading.bytes {
-                data.append(chunk)
-            }
-            return data
+        let errorTask = Task.detached {
+            errorPipe.fileHandleForReading.readDataToEndOfFile()
         }
 
         try process.run()
@@ -210,8 +203,8 @@ struct PackageScanner {
             throw ScannerError.timeout(packageDirectory.path, timeoutSeconds)
         }
 
-        let outputData = try await outputTask.value
-        _ = try await errorTask.value
+        let outputData = await outputTask.value
+        _ = await errorTask.value
 
         if process.terminationStatus != 0 {
             throw ScannerError.packageDumpFailed(packageDirectory.path)

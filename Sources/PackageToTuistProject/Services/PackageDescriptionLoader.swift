@@ -119,27 +119,14 @@ struct PackageDescriptionLoader {
             print("Loading package description: \(packageDirectory.path)")
         }
 
-        // Create tasks to read output asynchronously
-        let outputTask = Task {
-            var data = Data()
-            for try await chunk in outputPipe.fileHandleForReading.bytes {
-                data.append(chunk)
-                if verbose {
-                    print(String(bytes: [chunk], encoding: .utf8) ?? "", terminator: "")
-                }
-            }
-            return data
+        // Read pipe output in buffered chunks (not byte-by-byte) to avoid blocking
+        // the process when the pipe buffer fills up.
+        let outputTask = Task.detached {
+            outputPipe.fileHandleForReading.readDataToEndOfFile()
         }
 
-        let errorTask = Task {
-            var data = Data()
-            for try await chunk in errorPipe.fileHandleForReading.bytes {
-                data.append(chunk)
-                if verbose {
-                    print(String(bytes: [chunk], encoding: .utf8) ?? "", terminator: "")
-                }
-            }
-            return data
+        let errorTask = Task.detached {
+            errorPipe.fileHandleForReading.readDataToEndOfFile()
         }
 
         try process.run()
@@ -164,9 +151,8 @@ struct PackageDescriptionLoader {
             throw LoaderError.timeout(packageDirectory.path, timeoutSeconds)
         }
 
-        // Wait for all output to be read
-        let outputData = try await outputTask.value
-        let errorData = try await errorTask.value
+        let outputData = await outputTask.value
+        let errorData = await errorTask.value
 
         if process.terminationStatus != 0 {
             let errorMessage = String(data: errorData, encoding: .utf8) ?? "Unknown error"
