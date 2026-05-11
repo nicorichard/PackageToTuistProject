@@ -21,6 +21,7 @@ enum SwiftSettingKind: Codable, Equatable {
     case enableExperimentalFeature(String)
     case define(String)
     case unsafeFlags([String])
+    case swiftLanguageMode(String)
 
     private enum CodingKeys: String, CodingKey {
         case type
@@ -45,6 +46,9 @@ enum SwiftSettingKind: Codable, Equatable {
         case "unsafeFlags":
             let values = try container.decode([String].self, forKey: .values)
             self = .unsafeFlags(values)
+        case "swiftLanguageMode":
+            let value = try container.decode(String.self, forKey: .value)
+            self = .swiftLanguageMode(value)
         default:
             throw DecodingError.dataCorrupted(
                 DecodingError.Context(
@@ -70,6 +74,9 @@ enum SwiftSettingKind: Codable, Equatable {
         case .unsafeFlags(let values):
             try container.encode("unsafeFlags", forKey: .type)
             try container.encode(values, forKey: .values)
+        case .swiftLanguageMode(let value):
+            try container.encode("swiftLanguageMode", forKey: .type)
+            try container.encode(value, forKey: .value)
         }
     }
 }
@@ -96,6 +103,9 @@ struct PackageDescription: Codable {
     let targets: [Target]
     let dependencies: [Dependency]?
     let toolsVersion: String?
+    /// Package-level Swift language versions declared via `swiftLanguageModes:` (formerly `swiftLanguageVersions:`).
+    /// Exposed by `swift package describe` under `swift_languages_versions`.
+    let swiftLanguagesVersions: [String]?
 
     init(
         name: String,
@@ -105,7 +115,8 @@ struct PackageDescription: Codable {
         products: [Product],
         targets: [Target],
         dependencies: [Dependency]?,
-        toolsVersion: String?
+        toolsVersion: String?,
+        swiftLanguagesVersions: [String]? = nil
     ) {
         self.name = name
         self.manifestDisplayName = manifestDisplayName
@@ -115,6 +126,7 @@ struct PackageDescription: Codable {
         self.targets = targets
         self.dependencies = dependencies
         self.toolsVersion = toolsVersion
+        self.swiftLanguagesVersions = swiftLanguagesVersions
     }
 
     /// Returns true if the package has at least one library product
@@ -131,6 +143,7 @@ struct PackageDescription: Codable {
         case targets
         case dependencies
         case toolsVersion = "tools_version"
+        case swiftLanguagesVersions = "swift_languages_versions"
     }
 
     struct Platform: Codable {

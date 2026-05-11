@@ -19,6 +19,9 @@ struct TuistTarget {
     let packageName: String
     /// Swift compiler settings from Package.swift (enableUpcomingFeature, define, etc.)
     let swiftSettings: [SwiftSetting]?
+    /// Resolved Swift language version for this target (target override, else package default).
+    /// nil means inherit from the umbrella Tuist project.
+    let swiftVersion: String?
 
     init(
         name: String,
@@ -29,7 +32,8 @@ struct TuistTarget {
         destinations: String,
         deploymentTargets: String?,
         packageName: String,
-        swiftSettings: [SwiftSetting]? = nil
+        swiftSettings: [SwiftSetting]? = nil,
+        swiftVersion: String? = nil
     ) {
         self.name = name
         self.product = product
@@ -40,6 +44,7 @@ struct TuistTarget {
         self.deploymentTargets = deploymentTargets
         self.packageName = packageName
         self.swiftSettings = swiftSettings
+        self.swiftVersion = swiftVersion
     }
 
     enum ProductType: String {

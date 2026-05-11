@@ -79,6 +79,8 @@ struct PackageConverter {
         // Collect binary target names for dependency resolution
         let binaryTargetNames = Set(package.targets.filter { $0.type == "binary" }.map { $0.name })
 
+        let packageDefaultSwiftVersion = Self.packageDefaultSwiftVersion(for: package)
+
         // Convert each target
         var tuistTargets: [TuistTarget] = []
         for target in package.targets {
@@ -106,7 +108,8 @@ struct PackageConverter {
                 allDescriptions: allDescriptions,
                 destinations: destinations,
                 deploymentTargets: deploymentTargets,
-                binaryTargetNames: binaryTargetNames
+                binaryTargetNames: binaryTargetNames,
+                packageDefaultSwiftVersion: packageDefaultSwiftVersion
             )
             tuistTargets.append(tuistTarget)
         }
@@ -126,7 +129,8 @@ struct PackageConverter {
         allDescriptions: [String: PackageDescription],
         destinations: String,
         deploymentTargets: String?,
-        binaryTargetNames: Set<String>
+        binaryTargetNames: Set<String>,
+        packageDefaultSwiftVersion: String?
     ) throws -> TuistTarget {
         // Determine product type
         let productType: TuistTarget.ProductType
@@ -181,6 +185,28 @@ struct PackageConverter {
             print("  Converting target: \(target.name) -> \(productType.rawValue)")
         }
 
+        // Resolve Swift language version: a per-target `.swiftLanguageMode(...)` setting
+        // overrides the package-level default. The mode setting is consumed here (not
+        // emitted as a flag) — Xcode's SWIFT_VERSION drives the language mode.
+        var remainingSettings = target.swiftSettings
+        var targetSwiftVersion: String?
+        if let settings = remainingSettings {
+            for setting in settings {
+                if case .swiftLanguageMode(let v) = setting.kind {
+                    targetSwiftVersion = v
+                    break
+                }
+            }
+            remainingSettings = settings.filter {
+                if case .swiftLanguageMode = $0.kind { return false }
+                return true
+            }
+            if remainingSettings?.isEmpty == true {
+                remainingSettings = nil
+            }
+        }
+        let resolvedSwiftVersion = targetSwiftVersion ?? packageDefaultSwiftVersion
+
         return TuistTarget(
             name: target.name,
             product: productType,
@@ -190,8 +216,24 @@ struct PackageConverter {
             destinations: destinations,
             deploymentTargets: deploymentTargets,
             packageName: package.name,
-            swiftSettings: target.swiftSettings
+            swiftSettings: remainingSettings,
+            swiftVersion: resolvedSwiftVersion
         )
+    }
+
+    /// Resolve the package-level default Swift language version.
+    /// Prefers the highest entry in `swiftLanguageVersions` (if declared), else the
+    /// major component of `toolsVersion`. Returns nil if neither is available.
+    static func packageDefaultSwiftVersion(for package: PackageDescription) -> String? {
+        if let declared = package.swiftLanguagesVersions, !declared.isEmpty {
+            return declared.max { lhs, rhs in
+                lhs.compare(rhs, options: .numeric) == .orderedAscending
+            }
+        }
+        if let tools = package.toolsVersion {
+            return tools.split(separator: ".").first.map(String.init)
+        }
+        return nil
     }
 
     private func classifyProductDependency(
