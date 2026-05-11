@@ -155,7 +155,8 @@ struct PackageScanner {
             products: describe.products,
             targets: mergedTargets,
             dependencies: describe.dependencies,
-            toolsVersion: describe.toolsVersion
+            toolsVersion: describe.toolsVersion,
+            swiftLanguagesVersions: describe.swiftLanguagesVersions
         )
     }
 
