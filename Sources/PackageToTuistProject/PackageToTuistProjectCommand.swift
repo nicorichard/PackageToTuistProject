@@ -2,7 +2,7 @@ import ArgumentParser
 
 /// The current version of the PackageToTuistProject tool.
 /// Used in cache files to auto-invalidate when a new release is made.
-let toolVersion = "0.0.7"
+let toolVersion = "0.1.0"
 
 @main
 struct PackageToTuistProject: AsyncParsableCommand {
