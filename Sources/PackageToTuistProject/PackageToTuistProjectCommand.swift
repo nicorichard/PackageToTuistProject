@@ -39,6 +39,9 @@ struct PackageToTuistProject: AsyncParsableCommand {
     @Flag(name: .long, help: "Fail with a non-zero exit code if dependency validation finds issues")
     var strictDeps: Bool = false
 
+    @Flag(name: .long, help: "Emit Tuist buildableFolders instead of sources/resources globs (opt-in; requires Tuist >= 4.195.3 — https://github.com/tuist/tuist/releases/tag/4.195.3)")
+    var buildableFolders: Bool = false
+
     func run() async throws {
         let command = ConvertCommand(
             rootDirectory: rootDirectory,
@@ -49,7 +52,8 @@ struct PackageToTuistProject: AsyncParsableCommand {
             verbose: verbose,
             force: force,
             platformFilter: platform.isEmpty ? nil : Set(platform),
-            strictDeps: strictDeps
+            strictDeps: strictDeps,
+            useBuildableFolders: buildableFolders
         )
         try await command.execute()
     }

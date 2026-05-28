@@ -166,6 +166,7 @@ struct ConvertCommandTests {
         #expect(command.dryRun == true)
         #expect(command.verbose == false)
         #expect(command.force == false)  // Default value
+        #expect(command.useBuildableFolders == false)  // Default value
     }
 
     @Test("initializes with custom tuist directory")
@@ -181,6 +182,21 @@ struct ConvertCommandTests {
 
         #expect(command.tuistDir == "/custom/tuist")
         #expect(command.verbose == true)
+    }
+
+    @Test("initializes with useBuildableFolders flag set")
+    func initializesWithBuildableFolders() {
+        let command = ConvertCommand(
+            rootDirectory: "/path/to/root",
+            bundleIdPrefix: "com.example",
+            productType: "staticFramework",
+            tuistDir: nil,
+            dryRun: false,
+            verbose: false,
+            useBuildableFolders: true
+        )
+
+        #expect(command.useBuildableFolders == true)
     }
 }
 
@@ -1971,6 +1987,184 @@ struct ProjectWriterTests {
         let writer = ProjectWriter()
 
         // Test various configurations
+        let configurations: [(deps: [TuistDependency], deployment: String?)] = [
+            ([], nil),
+            ([], ".iOS(\"15.0\")"),
+            ([.target(name: "A")], nil),
+            ([.target(name: "A")], ".iOS(\"15.0\")"),
+            ([.target(name: "A"), .external(name: "B")], nil),
+            ([.target(name: "A"), .external(name: "B")], ".iOS(\"15.0\")"),
+        ]
+
+        for config in configurations {
+            let project = TuistProject(
+                name: "TestProject",
+                path: "/path",
+                targets: [
+                    TuistTarget(
+                        name: "TestTarget",
+                        product: .staticFramework,
+                        bundleId: "com.test",
+                        sourcesPath: "Sources/Test",
+                        dependencies: config.deps,
+                        destinations: ".iOS",
+                        deploymentTargets: config.deployment,
+                        packageName: "TestProject"
+                    )
+                ]
+            )
+
+            let output = writer.generate(project: project)
+            #expect(!output.contains(",,"), "Double comma found in config: deps=\(config.deps.count), deployment=\(config.deployment ?? "nil")")
+        }
+    }
+
+    @Test("default mode does not include project-level EXCLUDED_SOURCE_FILE_NAMES")
+    func defaultModeOmitsProjectExcludedSourceFileNames() {
+        let writer = ProjectWriter()
+        let project = TuistProject(
+            name: "MyProject",
+            path: "/path/to/project",
+            targets: [
+                TuistTarget(
+                    name: "MyTarget",
+                    product: .staticFramework,
+                    bundleId: "com.example.MyTarget",
+                    sourcesPath: "Sources/MyTarget",
+                    dependencies: [],
+                    destinations: ".iOS",
+                    deploymentTargets: nil,
+                    packageName: "MyProject"
+                )
+            ]
+        )
+
+        let output = writer.generate(project: project)
+
+        #expect(!output.contains("EXCLUDED_SOURCE_FILE_NAMES"))
+    }
+}
+
+// MARK: - ProjectWriter Buildable Folders Tests
+
+@Suite("ProjectWriter Buildable Folders")
+struct ProjectWriterBuildableFoldersTests {
+    @Test("emits buildableFolders and omits sources/resources")
+    func emitsBuildableFolders() {
+        let writer = ProjectWriter(useBuildableFolders: true)
+        let project = TuistProject(
+            name: "MyProject",
+            path: "/path/to/project",
+            targets: [
+                TuistTarget(
+                    name: "MyTarget",
+                    product: .framework,
+                    bundleId: "com.example.MyTarget",
+                    sourcesPath: "Sources/MyTarget",
+                    dependencies: [],
+                    destinations: ".macOS",
+                    deploymentTargets: nil,
+                    packageName: "MyProject"
+                )
+            ]
+        )
+
+        let output = writer.generate(project: project)
+
+        #expect(output.contains("buildableFolders:"))
+        #expect(output.contains(".folder(\"Sources/MyTarget\")"))
+        #expect(!output.contains("sources:"))
+        #expect(!output.contains("resources:"))
+    }
+
+    @Test("emits project-level EXCLUDED_SOURCE_FILE_NAMES so it applies to generated bundle targets")
+    func excludesDotfilesAtProjectLevel() {
+        let writer = ProjectWriter(useBuildableFolders: true)
+        let project = TuistProject(
+            name: "MyProject",
+            path: "/path/to/project",
+            targets: [
+                TuistTarget(
+                    name: "MyTarget",
+                    product: .staticFramework,
+                    bundleId: "com.example.MyTarget",
+                    sourcesPath: "Sources/MyTarget",
+                    dependencies: [],
+                    destinations: ".iOS",
+                    deploymentTargets: nil,
+                    packageName: "MyProject"
+                )
+            ]
+        )
+
+        let output = writer.generate(project: project)
+
+        #expect(output.contains("""
+            settings: .settings(base: [
+                "EXCLUDED_SOURCE_FILE_NAMES": ".*"
+            ]),
+        """))
+    }
+
+    @Test("emits buildableFolders alongside deploymentTargets with valid commas")
+    func withDeploymentTargetsValidCommas() {
+        let writer = ProjectWriter(useBuildableFolders: true)
+        let project = TuistProject(
+            name: "MyProject",
+            path: "/path/to/project",
+            targets: [
+                TuistTarget(
+                    name: "MyTarget",
+                    product: .staticFramework,
+                    bundleId: "com.example.MyTarget",
+                    sourcesPath: "Sources/MyTarget",
+                    dependencies: [],
+                    destinations: ".iOS",
+                    deploymentTargets: ".iOS(\"15.0\")",
+                    packageName: "MyProject"
+                )
+            ]
+        )
+
+        let output = writer.generate(project: project)
+
+        #expect(!output.contains(",,"))
+        #expect(output.contains("deploymentTargets:"))
+        #expect(output.contains("buildableFolders:"))
+    }
+
+    @Test("emits buildableFolders with dependencies and valid commas")
+    func withDependenciesValidCommas() {
+        let writer = ProjectWriter(useBuildableFolders: true)
+        let project = TuistProject(
+            name: "MyProject",
+            path: "/path/to/project",
+            targets: [
+                TuistTarget(
+                    name: "MyTarget",
+                    product: .staticFramework,
+                    bundleId: "com.example.MyTarget",
+                    sourcesPath: "Sources/MyTarget",
+                    dependencies: [.target(name: "OtherTarget")],
+                    destinations: ".iOS",
+                    deploymentTargets: nil,
+                    packageName: "MyProject"
+                )
+            ]
+        )
+
+        let output = writer.generate(project: project)
+
+        #expect(!output.contains(",,"))
+        #expect(output.contains("buildableFolders:"))
+        #expect(output.contains("dependencies:"))
+        #expect(output.contains("settings:"))
+    }
+
+    @Test("generated output has no double commas across configurations")
+    func noDoubleCommasInAnyConfiguration() {
+        let writer = ProjectWriter(useBuildableFolders: true)
+
         let configurations: [(deps: [TuistDependency], deployment: String?)] = [
             ([], nil),
             ([], ".iOS(\"15.0\")"),
