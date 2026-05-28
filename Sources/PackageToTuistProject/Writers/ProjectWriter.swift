@@ -18,9 +18,27 @@ struct ProjectWriter {
         "**/Resources/**"  // Resources folder in subdirectories
     ]
 
+    /// When true, emit Tuist `buildableFolders` instead of `sources`/`resources` globs.
+    private let useBuildableFolders: Bool
+
+    init(useBuildableFolders: Bool = false) {
+        self.useBuildableFolders = useBuildableFolders
+    }
+
     /// Generate Project.swift content for a Tuist project
     func generate(project: TuistProject) -> String {
         let targetCodes = project.targets.map { generateTarget($0) }
+
+        // In buildable folders mode, exclude dotfiles at the project level so the
+        // setting also applies to Tuist-generated resource bundle targets.
+        let projectSettingsBlock = useBuildableFolders
+            ? """
+                settings: .settings(base: [
+                    "EXCLUDED_SOURCE_FILE_NAMES": ".*"
+                ]),
+
+            """
+            : ""
 
         return """
         // swiftlint:disable:this file_name
@@ -36,7 +54,7 @@ struct ProjectWriter {
             options: .options(
                 disableSynthesizedResourceAccessors: true
             ),
-            targets: [
+        \(projectSettingsBlock)    targets: [
         \(targetCodes.joined(separator: ",\n"))
             ]
         )
@@ -60,8 +78,16 @@ struct ProjectWriter {
             arguments.append(.init(label: "deploymentTargets", value: deploymentTargets))
         }
 
-        arguments.append(.init(label: "sources", value: "[\"\(target.sourcesPath)/**\"]"))
-        arguments.append(.init(label: "resources", value: generateResourcesGlobs(for: target.sourcesPath)))
+        if useBuildableFolders {
+            arguments.append(.init(label: "buildableFolders", value: """
+                [
+                    .folder("\(target.sourcesPath)")
+                ]
+                """))
+        } else {
+            arguments.append(.init(label: "sources", value: "[\"\(target.sourcesPath)/**\"]"))
+            arguments.append(.init(label: "resources", value: generateResourcesGlobs(for: target.sourcesPath)))
+        }
 
         if !target.dependencies.isEmpty {
             let depsCode = target.dependencies.map { $0.swiftCode }.joined(separator: ",\n")

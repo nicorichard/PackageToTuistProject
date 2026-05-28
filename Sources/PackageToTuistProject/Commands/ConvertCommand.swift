@@ -80,6 +80,7 @@ struct ConvertCommand {
     let force: Bool
     let platformFilter: Set<SupportedPlatform>?
     let strictDeps: Bool
+    let useBuildableFolders: Bool
 
     /// Maximum number of concurrent package loads
     private let maxConcurrentLoads = 8
@@ -93,7 +94,8 @@ struct ConvertCommand {
         verbose: Bool,
         force: Bool = false,
         platformFilter: Set<SupportedPlatform>? = nil,
-        strictDeps: Bool = false
+        strictDeps: Bool = false,
+        useBuildableFolders: Bool = false
     ) {
         self.rootDirectory = rootDirectory
         self.bundleIdPrefix = bundleIdPrefix
@@ -104,6 +106,7 @@ struct ConvertCommand {
         self.force = force
         self.platformFilter = platformFilter
         self.strictDeps = strictDeps
+        self.useBuildableFolders = useBuildableFolders
     }
 
     /// Check if a single package needs regeneration.
@@ -302,7 +305,7 @@ struct ConvertCommand {
             verbose: verbose,
             platformFilter: platformFilter
         )
-        let projectWriter = ProjectWriter()
+        let projectWriter = ProjectWriter(useBuildableFolders: useBuildableFolders)
         let allDescriptionsByPath = Dictionary(
             uniqueKeysWithValues: allDescriptions.map { ($0.key.path, $0.value) }
         )
