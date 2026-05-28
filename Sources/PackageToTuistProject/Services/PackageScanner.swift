@@ -99,12 +99,10 @@ struct PackageScanner {
             return cached
         }
 
-        // Cache miss - load from swift package describe and dump-package in parallel
-        async let describeTask = loader.loadPackageDescriptionFromSwift(at: packagePath)
-        async let dumpTask = loadPackageDump(at: packagePath)
-
-        let description = try await describeTask
-        let dumpDescription = try? await dumpTask
+        // !!!: Running these in parallel causes SPM workspace lock contention since both
+        // commands acquire a file lock on .build.
+        let description = try await loader.loadPackageDescriptionFromSwift(at: packagePath)
+        let dumpDescription = try? await loadPackageDump(at: packagePath)
 
         // Merge swiftSettings from dump into describe result
         let mergedDescription = mergeSwiftSettings(describe: description, dump: dumpDescription)
@@ -157,7 +155,8 @@ struct PackageScanner {
             products: describe.products,
             targets: mergedTargets,
             dependencies: describe.dependencies,
-            toolsVersion: describe.toolsVersion
+            toolsVersion: describe.toolsVersion,
+            swiftLanguagesVersions: describe.swiftLanguagesVersions
         )
     }
 
@@ -179,21 +178,14 @@ struct PackageScanner {
             print("Loading package dump: \(packageDirectory.path)")
         }
 
-        // Create tasks to read output asynchronously
+        // Read pipe output in buffered chunks (not byte-by-byte) to avoid blocking
+        // the process when the pipe buffer fills up.
         let outputTask = Task {
-            var data = Data()
-            for try await chunk in outputPipe.fileHandleForReading.bytes {
-                data.append(chunk)
-            }
-            return data
+            try outputPipe.fileHandleForReading.readToEnd() ?? Data()
         }
 
         let errorTask = Task {
-            var data = Data()
-            for try await chunk in errorPipe.fileHandleForReading.bytes {
-                data.append(chunk)
-            }
-            return data
+            try errorPipe.fileHandleForReading.readToEnd() ?? Data()
         }
 
         try process.run()

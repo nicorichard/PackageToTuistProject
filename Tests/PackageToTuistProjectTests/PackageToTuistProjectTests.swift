@@ -3777,6 +3777,35 @@ struct PackageDescriptionLoaderTests {
         #expect(result == nil)
     }
 
+    @Test("waitForProcessWithTimeout completes for process producing large stdout output")
+    func largeOutputDoesNotTimeout() async throws {
+        let loader = PackageDescriptionLoader(verbose: false, timeoutSeconds: 10)
+
+        // Use a process that produces output larger than the typical 16KB pipe buffer.
+        // If pipe reading is byte-by-byte, the process blocks on the full pipe buffer
+        // and the timeout fires. Buffered reading avoids this.
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        // Generate ~200KB of output (well above 16KB pipe buffer)
+        process.arguments = ["python3", "-c", "print('x' * 200000)"]
+
+        let outputPipe = Pipe()
+        process.standardOutput = outputPipe
+        process.standardError = Pipe()
+
+        let outputTask = Task {
+            try outputPipe.fileHandleForReading.readToEnd() ?? Data()
+        }
+
+        try process.run()
+
+        let completed = await loader.waitForProcessWithTimeout(process: process, timeoutSeconds: 10)
+        #expect(completed == true)
+
+        let data = try await outputTask.value
+        #expect(data.count >= 200_000)
+    }
+
     @Test("LoaderError has correct descriptions")
     func loaderErrorDescriptions() {
         let timeoutError = PackageDescriptionLoader.LoaderError.timeout("/path/to/package", 30)
@@ -4124,5 +4153,265 @@ struct PackageConverterPlatformFilteringTests {
         )
 
         #expect(result!.targets.first?.destinations == ".iOS")
+    }
+}
+
+// MARK: - Swift Language Version Tests
+
+@Suite("SwiftLanguageMode codec")
+struct SwiftLanguageModeCodecTests {
+    @Test("SwiftSettingKind swiftLanguageMode round-trips through Codable")
+    func swiftSettingKindSwiftLanguageModeRoundtrips() throws {
+        let setting = SwiftSetting(kind: .swiftLanguageMode("6"))
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(setting)
+        let decoded = try JSONDecoder().decode(SwiftSetting.self, from: data)
+        #expect(decoded.kind == .swiftLanguageMode("6"))
+    }
+
+    @Test("DumpSettingKind decodes swiftLanguageMode from dump-package JSON")
+    func dumpSettingKindDecodesSwiftLanguageMode() throws {
+        let json = """
+        {
+            "kind": { "swiftLanguageMode": { "_0": "6" } },
+            "tool": "swift"
+        }
+        """
+        let setting = try JSONDecoder().decode(DumpSetting.self, from: json.data(using: .utf8)!)
+        guard let converted = setting.toSwiftSetting() else {
+            Issue.record("expected non-nil SwiftSetting")
+            return
+        }
+        #expect(converted.kind == .swiftLanguageMode("6"))
+    }
+}
+
+@Suite("PackageConverter swift language version")
+struct PackageConverterSwiftLanguageVersionTests {
+    private static let converter = PackageConverter(
+        bundleIdPrefix: "com.example",
+        productType: "staticFramework"
+    )
+
+    private static func decode(_ json: String) throws -> PackageDescription {
+        try JSONDecoder().decode(PackageDescription.self, from: json.data(using: .utf8)!)
+    }
+
+    @Test("tools_version 6.0 yields SWIFT_VERSION 6 on every target")
+    func toolsVersion6() throws {
+        let package = try Self.decode("""
+        {
+            "name": "P",
+            "path": "/p",
+            "platforms": [{"name": "ios", "version": "16.0"}],
+            "products": [],
+            "targets": [
+                {"name": "Lib", "type": "library", "path": "Sources/Lib"}
+            ],
+            "tools_version": "6.0"
+        }
+        """)
+        let project = try Self.converter.convert(
+            package: package,
+            packagePath: URL(fileURLWithPath: "/p/Package.swift"),
+            collector: DependencyCollector(),
+            allDescriptions: [:]
+        )
+        #expect(project?.targets.first?.swiftVersion == "6")
+    }
+
+    @Test("tools_version 5.9 yields SWIFT_VERSION 5")
+    func toolsVersion5() throws {
+        let package = try Self.decode("""
+        {
+            "name": "P",
+            "path": "/p",
+            "platforms": [{"name": "ios", "version": "15.0"}],
+            "products": [],
+            "targets": [
+                {"name": "Lib", "type": "library", "path": "Sources/Lib"}
+            ],
+            "tools_version": "5.9"
+        }
+        """)
+        let project = try Self.converter.convert(
+            package: package,
+            packagePath: URL(fileURLWithPath: "/p/Package.swift"),
+            collector: DependencyCollector(),
+            allDescriptions: [:]
+        )
+        #expect(project?.targets.first?.swiftVersion == "5")
+    }
+
+    @Test("swift_languages_versions takes max and overrides tools_version")
+    func declaredLanguageVersionsWins() throws {
+        // tools_version says 6, but declared list says ["4","5"] — declared wins.
+        let package = try Self.decode("""
+        {
+            "name": "P",
+            "path": "/p",
+            "platforms": [{"name": "ios", "version": "15.0"}],
+            "products": [],
+            "targets": [
+                {"name": "Lib", "type": "library", "path": "Sources/Lib"}
+            ],
+            "tools_version": "6.0",
+            "swift_languages_versions": ["4", "5"]
+        }
+        """)
+        let project = try Self.converter.convert(
+            package: package,
+            packagePath: URL(fileURLWithPath: "/p/Package.swift"),
+            collector: DependencyCollector(),
+            allDescriptions: [:]
+        )
+        #expect(project?.targets.first?.swiftVersion == "5")
+    }
+
+    @Test("per-target .swiftLanguageMode overrides package default")
+    func perTargetOverride() throws {
+        // Package default would be 5; one target pins itself to 6.
+        let package = try Self.decode("""
+        {
+            "name": "P",
+            "path": "/p",
+            "platforms": [{"name": "ios", "version": "15.0"}],
+            "products": [],
+            "targets": [
+                {
+                    "name": "Lib",
+                    "type": "library",
+                    "path": "Sources/Lib",
+                    "swiftSettings": [
+                        {"kind": {"type": "swiftLanguageMode", "value": "6"}}
+                    ]
+                },
+                {"name": "OtherLib", "type": "library", "path": "Sources/OtherLib"}
+            ],
+            "tools_version": "5.9"
+        }
+        """)
+        let project = try Self.converter.convert(
+            package: package,
+            packagePath: URL(fileURLWithPath: "/p/Package.swift"),
+            collector: DependencyCollector(),
+            allDescriptions: [:]
+        )
+        let lib = project?.targets.first { $0.name == "Lib" }
+        let other = project?.targets.first { $0.name == "OtherLib" }
+        #expect(lib?.swiftVersion == "6")
+        #expect(other?.swiftVersion == "5")
+    }
+
+    @Test(".swiftLanguageMode is consumed, not emitted as a Swift flag")
+    func swiftLanguageModeIsConsumed() throws {
+        let package = try Self.decode("""
+        {
+            "name": "P",
+            "path": "/p",
+            "platforms": [{"name": "ios", "version": "15.0"}],
+            "products": [],
+            "targets": [
+                {
+                    "name": "Lib",
+                    "type": "library",
+                    "path": "Sources/Lib",
+                    "swiftSettings": [
+                        {"kind": {"type": "swiftLanguageMode", "value": "6"}},
+                        {"kind": {"type": "enableUpcomingFeature", "value": "ExistentialAny"}}
+                    ]
+                }
+            ],
+            "tools_version": "6.0"
+        }
+        """)
+        let project = try Self.converter.convert(
+            package: package,
+            packagePath: URL(fileURLWithPath: "/p/Package.swift"),
+            collector: DependencyCollector(),
+            allDescriptions: [:]
+        )
+        let target = project?.targets.first
+        let remaining = target?.swiftSettings ?? []
+        // The swiftLanguageMode setting was stripped; only the upcoming-feature remains.
+        #expect(remaining.count == 1)
+        #expect(remaining.first?.kind == .enableUpcomingFeature("ExistentialAny"))
+        #expect(target?.swiftVersion == "6")
+    }
+
+    @Test("no tools_version and no language versions yields nil swiftVersion")
+    func nilWhenAbsent() throws {
+        let package = try Self.decode("""
+        {
+            "name": "P",
+            "path": "/p",
+            "platforms": [{"name": "ios", "version": "15.0"}],
+            "products": [],
+            "targets": [
+                {"name": "Lib", "type": "library", "path": "Sources/Lib"}
+            ]
+        }
+        """)
+        let project = try Self.converter.convert(
+            package: package,
+            packagePath: URL(fileURLWithPath: "/p/Package.swift"),
+            collector: DependencyCollector(),
+            allDescriptions: [:]
+        )
+        #expect(project?.targets.first?.swiftVersion == nil)
+    }
+
+    @Test("swift_languages_versions max comparison is numeric (10 > 9, not lexicographic)")
+    func numericVersionComparison() {
+        let v = PackageConverter.packageDefaultSwiftVersion(for: PackageDescription(
+            name: "P",
+            manifestDisplayName: nil,
+            path: "/p",
+            platforms: nil,
+            products: [],
+            targets: [],
+            dependencies: nil,
+            toolsVersion: nil,
+            swiftLanguagesVersions: ["9", "10"]
+        ))
+        #expect(v == "10")
+    }
+}
+
+@Suite("ProjectWriter SWIFT_VERSION")
+struct ProjectWriterSwiftVersionTests {
+    private static func target(swiftVersion: String?) -> TuistTarget {
+        TuistTarget(
+            name: "MyTarget",
+            product: .staticFramework,
+            bundleId: "com.example.MyTarget",
+            sourcesPath: "Sources/MyTarget",
+            dependencies: [],
+            destinations: ".iOS",
+            deploymentTargets: ".iOS(\"15.0\")",
+            packageName: "MyPackage",
+            swiftSettings: nil,
+            swiftVersion: swiftVersion
+        )
+    }
+
+    @Test("emits SWIFT_VERSION when swiftVersion is set")
+    func emitsWhenSet() {
+        let output = ProjectWriter().generate(project: TuistProject(
+            name: "MyPackage",
+            path: "/p",
+            targets: [Self.target(swiftVersion: "6")]
+        ))
+        #expect(output.contains("\"SWIFT_VERSION\": \"6\""))
+    }
+
+    @Test("omits SWIFT_VERSION when swiftVersion is nil")
+    func omitsWhenNil() {
+        let output = ProjectWriter().generate(project: TuistProject(
+            name: "MyPackage",
+            path: "/p",
+            targets: [Self.target(swiftVersion: nil)]
+        ))
+        #expect(!output.contains("\"SWIFT_VERSION\""))
     }
 }

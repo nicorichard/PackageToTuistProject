@@ -31,6 +31,7 @@ enum DumpSettingKind: Codable, Equatable {
     case enableExperimentalFeature(String)
     case define(String)
     case unsafeFlags([String])
+    case swiftLanguageMode(String)
     case unknown
 
     private struct StringValue: Codable {
@@ -59,6 +60,9 @@ enum DumpSettingKind: Codable, Equatable {
             case "unsafeFlags":
                 let value = try container.decode(ArrayValue.self, forKey: key)
                 self = .unsafeFlags(value._0)
+            case "swiftLanguageMode":
+                let value = try container.decode(StringValue.self, forKey: key)
+                self = .swiftLanguageMode(value._0)
             default:
                 self = .unknown
             }
@@ -79,6 +83,8 @@ enum DumpSettingKind: Codable, Equatable {
             try container.encode(StringValue(_0: value), forKey: DynamicCodingKey(stringValue: "define"))
         case .unsafeFlags(let values):
             try container.encode(ArrayValue(_0: values), forKey: DynamicCodingKey(stringValue: "unsafeFlags"))
+        case .swiftLanguageMode(let value):
+            try container.encode(StringValue(_0: value), forKey: DynamicCodingKey(stringValue: "swiftLanguageMode"))
         case .unknown:
             break
         }
@@ -120,6 +126,8 @@ extension DumpSetting {
             settingKind = .define(value)
         case .unsafeFlags(let values):
             settingKind = .unsafeFlags(values)
+        case .swiftLanguageMode(let value):
+            settingKind = .swiftLanguageMode(value)
         case .unknown:
             return nil
         }

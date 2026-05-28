@@ -74,6 +74,10 @@ struct ProjectWriter {
             "\"ENABLE_TESTING_SEARCH_PATHS\": \"YES\""
         ]
 
+        if let swiftVersion = target.swiftVersion {
+            settingsPairs.append("\"SWIFT_VERSION\": \"\(swiftVersion)\"")
+        }
+
         // Add -ObjC linker flag for test targets to ensure Objective-C categories are loaded
         if target.product == .unitTests {
             settingsPairs.append("\"OTHER_LDFLAGS\": [\"-ObjC\"]")
@@ -115,6 +119,9 @@ struct ProjectWriter {
                     flags.append(macro)
                 case .unsafeFlags(let customFlags):
                     flags.append(contentsOf: customFlags)
+                case .swiftLanguageMode:
+                    // Resolved into SWIFT_VERSION upstream; do not emit as a flag.
+                    break
                 }
             }
         }
